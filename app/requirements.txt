@@ -1,0 +1,10 @@
+Django>=4.2
+psycopg2-binary
+djangorestframework
+kafka-python
+faker
+drf-yasg[validation]
+drf-spectacular
+drf-spectacular-sidecar
+pytest
+pytest-django

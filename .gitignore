@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+*.log
+
+# Django
+*.sqlite3
+/media/
+staticfiles/
+
+# Django migrations (ignore all except __init__.py)
+**/migrations/*
+!**/migrations/__init__.py
+
+# Environment
+.env
+*.env
+
+# IDE & Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.pid
+*.seed
+*.out
+*.log
+
+# Database volumes
+postgres_data/
+mysql_data/
+redis_data/
+mongo_data/
+elasticsearch_data/
+rabbitmq_data/
+couchdb_data/
+influxdb_data/
