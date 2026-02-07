@@ -25,7 +25,11 @@ SECRET_KEY = 'django-insecure-ok7eihn2z5kq)k4b@#+1*7y2z39p9+sqt^p)@&2k_ttl#d__!=
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    "192.168.1.214",
+]
 
 
 # Application definition
@@ -38,7 +42,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'core', # ✅ add our app
-    'risk', # ✅ add our risk app
+    # 'risk', # ✅ add our risk app
+    "risk.apps.RiskConfig",
     "rest_framework",
     "drf_spectacular",
     "drf_spectacular_sidecar",  # includes Swagger & ReDoc templates

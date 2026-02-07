@@ -1,61 +1,79 @@
+# core/management/commands/seed_demo_data.py
+
 from django.core.management.base import BaseCommand
-from django.contrib.auth import get_user_model
-from core.models import Client, Instrument, MarginLoan, Portfolio, AuditLog
+from decimal import Decimal
 from faker import Faker
 import random
 
+from core.models import Client, Instrument, MarginLoan, Portfolio
+
+
 class Command(BaseCommand):
-    help = 'Seed demo data for OMS Margin Trading System'
+    help = "Seed demo data for OMS Margin Trading System (safe & idempotent)"
 
     def handle(self, *args, **options):
         fake = Faker()
-        
-        # Clear existing data
-        Client.objects.all().delete()
-        Instrument.objects.all().delete()
-        
-        # Create clients
+        self.stdout.write("🌱 Seeding OMS demo data...")
+
+        # ---- Clients ----
         clients = []
         for _ in range(10):
-            client = Client.objects.create(
-                name=fake.name(),
-                email=fake.email()
+            email = fake.unique.email()
+            client, _ = Client.objects.get_or_create(
+                email=email,
+                defaults={"name": fake.name()},
             )
             clients.append(client)
-        
-        # Create instruments
+
+        # ---- Instruments (stable) ----
         instruments_data = [
-            {'symbol': 'AAPL', 'name': 'Apple Inc.', 'exchange': 'NASDAQ', 'is_marginable': True, 'margin_rate': 0.3},
-            {'symbol': 'GOOGL', 'name': 'Alphabet Inc.', 'exchange': 'NASDAQ', 'is_marginable': True, 'margin_rate': 0.35},
-            {'symbol': 'MSFT', 'name': 'Microsoft Corp.', 'exchange': 'NASDAQ', 'is_marginable': True, 'margin_rate': 0.3},
-            {'symbol': 'TSLA', 'name': 'Tesla Inc.', 'exchange': 'NASDAQ', 'is_marginable': True, 'margin_rate': 0.5},
-            {'symbol': 'NVDA', 'name': 'NVIDIA Corp.', 'exchange': 'NASDAQ', 'is_marginable': True, 'margin_rate': 0.4},
+            ("AAPL", "Apple Inc.", Decimal("0.30")),
+            ("GOOGL", "Alphabet Inc.", Decimal("0.35")),
+            ("MSFT", "Microsoft Corp.", Decimal("0.30")),
+            ("TSLA", "Tesla Inc.", Decimal("0.50")),
+            ("NVDA", "NVIDIA Corp.", Decimal("0.40")),
         ]
-        
+
         instruments = []
-        for data in instruments_data:
-            instrument, created = Instrument.objects.get_or_create(**data)
+        for symbol, name, margin_rate in instruments_data:
+            instrument, _ = Instrument.objects.get_or_create(
+                symbol=symbol,
+                defaults={
+                    "name": name,
+                    "exchange": "NASDAQ",
+                    "is_marginable": True,
+                    "margin_rate": margin_rate,
+                },
+            )
             instruments.append(instrument)
-        
-        # Create margin loans
-        for client in clients:
-            for _ in range(random.randint(1, 3)):
-                MarginLoan.objects.create(
-                    client=client,
-                    loan_amount=round(random.uniform(1000, 50000), 2),
-                    interest_rate=round(random.uniform(0.05, 0.12), 4)
-                )
-        
-        # Create portfolio entries
+
+        # ---- Portfolios ----
         for client in clients:
             for instrument in random.sample(instruments, random.randint(1, 4)):
-                Portfolio.objects.create(
+                Portfolio.objects.get_or_create(
                     client=client,
                     instrument=instrument,
-                    quantity=random.randint(10, 1000),
-                    avg_price=round(random.uniform(10, 500), 2)
+                    defaults={
+                        "quantity": Decimal(random.randint(10, 1000)),
+                        "avg_price": Decimal(
+                            str(round(random.uniform(10, 500), 2))
+                        ),
+                    },
                 )
-        
+
+        # ---- Margin Loans ----
+        for client in clients:
+            for _ in range(random.randint(1, 2)):
+                MarginLoan.objects.create(
+                    client=client,
+                    loan_amount=Decimal(
+                        str(round(random.uniform(1000, 50000), 2))
+                    ),
+                    interest_rate=Decimal(
+                        str(round(random.uniform(0.05, 0.12), 4))
+                    ),
+                )
+
         self.stdout.write(
-            self.style.SUCCESS('Successfully seeded demo data!')
+            self.style.SUCCESS("✅ OMS demo data seeded successfully")
         )

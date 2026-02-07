@@ -2,24 +2,83 @@ from django.db import models
 from django.utils import timezone
 from decimal import Decimal
 
+# class Client(models.Model):
+#     name = models.CharField(max_length=100)
+#     email = models.EmailField(unique=True)
+#     created_at = models.DateTimeField(auto_now_add=True)
+
+#     def __str__(self):
+#         return self.name
+
+
+# class Instrument(models.Model):
+#     symbol = models.CharField(max_length=20, unique=True)
+#     name = models.CharField(max_length=100)
+#     exchange = models.CharField(max_length=20)
+#     is_marginable = models.BooleanField(default=False)
+#     margin_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0.50)
+
+#     def __str__(self):
+#         return f"{self.symbol} ({'Marginable' if self.is_marginable else 'Non-Marginable'})"
+
+
+
+class Instrument(models.Model):
+    BOARD_CHOICES = (
+        ("A", "A Board"),
+        ("B", "B Board"),
+        ("Z", "Z Board"),
+    )
+
+    symbol = models.CharField(max_length=20, unique=True)
+    name = models.CharField(max_length=100)
+    exchange = models.CharField(max_length=20)
+
+    board = models.CharField(
+        max_length=1,
+        choices=BOARD_CHOICES,
+        default="A",
+    )
+
+    is_marginable = models.BooleanField(default=False)
+    margin_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("0.50"),
+    )
+
+    def effective_margin_rate(self) -> Decimal:
+        """
+        Final margin rate after board rules
+        """
+        if not self.is_marginable:
+            return Decimal("0.00")
+
+        if self.board == "Z":
+            return Decimal("0.00")   # ❌ forbidden
+
+        if self.board == "B":
+            return self.margin_rate * Decimal("0.75")  # tighter
+
+        return self.margin_rate  # A board
+
+
+
+
+
+
 class Client(models.Model):
     name = models.CharField(max_length=100)
     email = models.EmailField(unique=True)
+    cash_balance = models.DecimalField(
+        max_digits=20,
+        decimal_places=2,
+        default=Decimal("0.00"),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.name
-
-
-class Instrument(models.Model):
-    symbol = models.CharField(max_length=20, unique=True)
-    name = models.CharField(max_length=100)
-    exchange = models.CharField(max_length=20)
-    is_marginable = models.BooleanField(default=False)
-    margin_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0.50)
-
-    def __str__(self):
-        return f"{self.symbol} ({'Marginable' if self.is_marginable else 'Non-Marginable'})"
 
 
 class Portfolio(models.Model):

@@ -1,34 +1,168 @@
-# version: "3.9"
+# # version: "3.9"
+
+# services:
+#   # Django App
+#   web:
+#     build: ./app
+#     container_name: oms_django
+#     command: >
+#       sh -c "echo 'Environment variables:'
+#              echo 'POSTGRES_HOST=$$POSTGRES_HOST'
+#              echo 'POSTGRES_DB=$$POSTGRES_DB'
+#              echo 'POSTGRES_USER=$$POSTGRES_USER'
+#              python manage.py check
+#              python manage.py migrate &&
+#              python manage.py runserver 0.0.0.0:8000"
+#     volumes:
+#       - ./app:/code
+#     ports:
+#       - "8000:8000"
+#     depends_on:
+#       db:
+#         condition: service_healthy
+#       kafka:
+#         condition: service_started
+#     environment:
+#       - POSTGRES_HOST=db
+#       - POSTGRES_DB=omsdb
+#       - POSTGRES_USER=omsuser
+#       - POSTGRES_PASSWORD=omspassword
+#       - KAFKA_BROKER=kafka:9092
+#       - DATABASE_URL=postgresql://omsuser:omspassword@db:5432/omsdb
+#     networks:
+#       - app-network
+
+#   db:
+#     image: postgres:15
+#     container_name: oms_postgres
+#     restart: always
+#     environment:
+#       - POSTGRES_DB=omsdb
+#       - POSTGRES_USER=omsuser
+#       - POSTGRES_PASSWORD=omspassword
+#     ports:
+#       - "5432:5432"
+#     volumes:
+#       - ./postgres_data:/var/lib/postgresql/data
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -U omsuser -d omsdb"]
+#       interval: 5s
+#       timeout: 5s
+#       retries: 10
+#       start_period: 10s
+#     networks:
+#       - app-network
+
+#   # Kafka (KRaft mode, no ZooKeeper)
+#     kafka:
+#       image: bitnami/kafka:3.6.0-debian-11
+#       container_name: oms_kafka
+#       restart: always
+#       environment:
+#         - KAFKA_ENABLE_KRAFT=yes
+#         - KAFKA_PROCESS_ROLES=broker,controller
+#         - KAFKA_CFG_NODE_ID=1
+#         - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+#         - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+#         - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+#         - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+#         - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+#         - ALLOW_PLAINTEXT_LISTENER=yes
+#       ports:
+#         - "9092:9092"
+#       healthcheck:
+#         test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
+#         interval: 10s
+#       networks:
+#         - app-network
+
+
+#   portfolio_consumer:
+#     build: ./app
+#     container_name: portfolio_consumer
+#     command: python -m core.consumers
+#     volumes:
+#       - ./app:/code
+#     depends_on:
+#       db:
+#         condition: service_healthy
+#       kafka:
+#         condition: service_started
+#     environment:
+#       - POSTGRES_HOST=db
+#       - POSTGRES_DB=omsdb
+#       - POSTGRES_USER=omsuser
+#       - POSTGRES_PASSWORD=omspassword
+#       - KAFKA_BROKER=kafka:9092
+#       - DATABASE_URL=postgresql://omsuser:omspassword@db:5432/omsdb
+#       - CONSUMER_TYPE=portfolio
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -h db -U omsuser -d omsdb || exit 1"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+#     networks:
+#       - app-network
+
+#   margin_consumer:
+#     build: ./app
+#     container_name: margin_consumer
+#     command: python -m core.consumers margin
+#     volumes:
+#       - ./app:/code
+#     depends_on:
+#       db:
+#         condition: service_healthy
+#       kafka:
+#         condition: service_started
+#     environment:
+#       - POSTGRES_HOST=db
+#       - POSTGRES_DB=omsdb
+#       - POSTGRES_USER=omsuser
+#       - POSTGRES_PASSWORD=omspassword
+#       - KAFKA_BROKER=kafka:9092
+#       - DATABASE_URL=postgresql://omsuser:omspassword@db:5432/omsdb
+#       - CONSUMER_TYPE=margin
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -h db -U omsuser -d omsdb || exit 1"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+#     networks:
+#       - app-network
+
+# networks:
+#   app-network:
+#     driver: bridge
+
+# volumes:
+#   postgres_data:
+
 
 services:
-  # Django App
+
   web:
     build: ./app
     container_name: oms_django
     command: >
-      sh -c "echo 'Environment variables:'
-             echo 'POSTGRES_HOST=$$POSTGRES_HOST'
-             echo 'POSTGRES_DB=$$POSTGRES_DB'
-             echo 'POSTGRES_USER=$$POSTGRES_USER'
-             python manage.py check
-             python manage.py migrate &&
+      sh -c "python manage.py migrate &&
              python manage.py runserver 0.0.0.0:8000"
     volumes:
       - ./app:/code
     ports:
       - "8000:8000"
-    depends_on:
-      db:
-        condition: service_healthy
-      kafka:
-        condition: service_started
     environment:
       - POSTGRES_HOST=db
       - POSTGRES_DB=omsdb
       - POSTGRES_USER=omsuser
       - POSTGRES_PASSWORD=omspassword
-      - KAFKA_BROKER=kafka:9092
       - DATABASE_URL=postgresql://omsuser:omspassword@db:5432/omsdb
+      - KAFKA_BROKER=kafka:9092
+    depends_on:
+      db:
+        condition: service_healthy
+      kafka:
+        condition: service_started
     networks:
       - app-network
 
@@ -37,69 +171,62 @@ services:
     container_name: oms_postgres
     restart: always
     environment:
-      - POSTGRES_DB=omsdb
-      - POSTGRES_USER=omsuser
-      - POSTGRES_PASSWORD=omspassword
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: omsdb
+      POSTGRES_USER: omsuser
+      POSTGRES_PASSWORD: omspassword
     volumes:
+      # - postgres_data:/var/lib/postgresql/data
       - ./postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U omsuser -d omsdb"]
       interval: 5s
       timeout: 5s
       retries: 10
-      start_period: 10s
     networks:
       - app-network
 
-  # Kafka (KRaft mode, no ZooKeeper)
-  kafka:
-    image: bitnami/kafka:3.6.0
-    container_name: oms_kafka
-    restart: always
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    container_name: oms_zookeeper
     environment:
-      - KAFKA_ENABLE_KRAFT=yes
-      - KAFKA_PROCESS_ROLES=broker,controller
-      - KAFKA_CFG_NODE_ID=1
-      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
-      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
-      - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
-      - ALLOW_PLAINTEXT_LISTENER=yes
-    ports:
-      - "9092:9092"
-    healthcheck:
-      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
-      interval: 10s
+      ZOOKEEPER_CLIENT_PORT: 2181
     networks:
       - app-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: oms_kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    depends_on:
+      - zookeeper
+    networks:
+      - app-network
+
+
+
+
 
   portfolio_consumer:
     build: ./app
     container_name: portfolio_consumer
-    command: python -m core.consumers
+    command: python -m core.consumers portfolio
     volumes:
       - ./app:/code
+    environment:
+      - DATABASE_URL=postgresql://omsuser:omspassword@db:5432/omsdb
+      - KAFKA_BROKER=kafka:9092
     depends_on:
       db:
         condition: service_healthy
       kafka:
         condition: service_started
-    environment:
-      - POSTGRES_HOST=db
-      - POSTGRES_DB=omsdb
-      - POSTGRES_USER=omsuser
-      - POSTGRES_PASSWORD=omspassword
-      - KAFKA_BROKER=kafka:9092
-      - DATABASE_URL=postgresql://omsuser:omspassword@db:5432/omsdb
-      - CONSUMER_TYPE=portfolio
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h db -U omsuser -d omsdb || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     networks:
       - app-network
 
@@ -109,24 +236,14 @@ services:
     command: python -m core.consumers margin
     volumes:
       - ./app:/code
+    environment:
+      - DATABASE_URL=postgresql://omsuser:omspassword@db:5432/omsdb
+      - KAFKA_BROKER=kafka:9092
     depends_on:
       db:
         condition: service_healthy
       kafka:
         condition: service_started
-    environment:
-      - POSTGRES_HOST=db
-      - POSTGRES_DB=omsdb
-      - POSTGRES_USER=omsuser
-      - POSTGRES_PASSWORD=omspassword
-      - KAFKA_BROKER=kafka:9092
-      - DATABASE_URL=postgresql://omsuser:omspassword@db:5432/omsdb
-      - CONSUMER_TYPE=margin
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h db -U omsuser -d omsdb || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     networks:
       - app-network
 

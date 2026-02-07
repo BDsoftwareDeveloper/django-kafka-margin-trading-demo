@@ -4,7 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from django.db import transaction
-
+from decimal import Decimal
 
 from rest_framework import status
 
@@ -13,6 +13,7 @@ from .serializers import MarginLoanSerializer, AuditLogSerializer
 from .producers import KafkaProducerWrapper
 
 from .models import Portfolio, MarginLoan, AuditLog,Client, Instrument
+from risk.services.risk_engine import RiskEngine, RiskViolation
 
 
 from .serializers import (
@@ -88,6 +89,33 @@ class InstrumentViewSet(viewsets.ModelViewSet):
 class PortfolioViewSet(viewsets.ModelViewSet):
     queryset = Portfolio.objects.all()
     serializer_class = PortfolioSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        client = serializer.validated_data["client"]
+        instrument = serializer.validated_data["instrument"]
+        quantity = serializer.validated_data["quantity"]
+        price = serializer.validated_data["avg_price"]
+
+        # 🔐 RISK CHECK (PRE-TRADE)
+        try:
+            RiskEngine.check_pre_trade(
+                client_id=client.id,
+                instrument=instrument,
+                side="BUY",
+                quantity=Decimal(quantity),
+                price=Decimal(price),
+                is_margin=True,  # portfolio implies margin exposure
+            )
+        except RiskViolation as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return super().create(request, *args, **kwargs)
 
     @extend_schema(
         tags=["Portfolio"],
