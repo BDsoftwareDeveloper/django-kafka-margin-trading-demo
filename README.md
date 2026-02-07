@@ -79,8 +79,8 @@ Each developer should generate migrations locally after pulling changes:
 
 
 ```bash
-docker-compose exec django python manage.py makemigrations
-docker-compose exec django python manage.py migrate
+docker-compose exec web python manage.py makemigrations
+docker-compose exec web python manage.py migrate
 
 🗄️ Database Persistence
 Postgres data is stored in postgres_data/ (Docker volume).
