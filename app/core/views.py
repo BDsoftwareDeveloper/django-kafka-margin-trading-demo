@@ -96,18 +96,17 @@ class PortfolioViewSet(viewsets.ModelViewSet):
 
         client = serializer.validated_data["client"]
         instrument = serializer.validated_data["instrument"]
-        quantity = serializer.validated_data["quantity"]
-        price = serializer.validated_data["avg_price"]
+        quantity = Decimal(serializer.validated_data["quantity"])
+        price = Decimal(serializer.validated_data["avg_price"])
 
-        # 🔐 RISK CHECK (PRE-TRADE)
         try:
             RiskEngine.check_pre_trade(
                 client_id=client.id,
                 instrument=instrument,
                 side="BUY",
-                quantity=Decimal(quantity),
-                price=Decimal(price),
-                is_margin=True,  # portfolio implies margin exposure
+                quantity=quantity,
+                price=price,
+                is_margin=True,
             )
         except RiskViolation as e:
             return Response(
@@ -115,8 +114,19 @@ class PortfolioViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return super().create(request, *args, **kwargs)
+        response = super().create(request, *args, **kwargs)
 
+        # 🔒 Post-trade safety net
+        try:
+            RiskEngine.enforce_post_trade(client.id)
+        except RiskViolation as e:
+            AuditLog.log_event(
+                event_type="POST_TRADE_RISK_BREACH",
+                client=client,
+                details={"reason": str(e)},
+            )
+
+        return response
     @extend_schema(
         tags=["Portfolio"],
         description="Check margin loan eligibility for a client",
