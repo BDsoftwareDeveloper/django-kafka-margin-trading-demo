@@ -9,20 +9,35 @@ from risk.services.risk_engine import RiskEngine
 @admin.register(ClientRiskProfile)
 class ClientRiskProfileAdmin(admin.ModelAdmin):
     list_display = [
-        "client",
-        "max_exposure",
-        "used_exposure",
-        "edr_percent",
-        "edr_status",
-        "allow_margin",
-        "created_at",
-    ]
+    "client",
+    "max_exposure",
+    "used_exposure",
+    "loan_amount",     # ✅
+    "edr_percent",
+    "edr_status",
+    "allow_margin",
+    "created_at",
+]
 
     list_filter = ["allow_margin"]
     search_fields = ["client__name", "client__email"]
     readonly_fields = ["max_exposure"]
+    
 
     # ---------- COMPUTED COLUMNS ----------
+    
+    def loan_amount(self, obj):
+        loan = RiskEngine.loan_amount(obj.client_id)
+
+        if loan == 0:
+            return format_html('<span style="color:green;">0.00</span>')
+
+        return format_html(
+            '<strong style="color:red;">{}</strong>',
+            f"{loan:.2f}"
+        )
+
+    loan_amount.short_description = "Loan Amount"
 
     def used_exposure(self, obj):
         used = RiskEngine.calculate_current_exposure(obj.client_id)
