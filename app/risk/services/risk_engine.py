@@ -11,26 +11,31 @@ class RiskViolation(Exception):
 
 class RiskEngine:
     
-    
-    
     # ------------------------------
     # LOAN CALCULATION
     # ------------------------------
+    
+    
     @staticmethod
     def loan_amount(client_id: int) -> Decimal:
         """
         Loan = max(0, Used Exposure − Cash Balance)
         """
+
         client = Client.objects.get(id=client_id)
 
         used = RiskEngine.calculate_current_exposure(client_id)
         cash = client.cash_balance or Decimal("0.00")
 
         loan = used - cash
+
         if loan < 0:
             loan = Decimal("0.00")
 
-        return loan.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        return loan.quantize(Decimal("0.01"), ROUND_HALF_UP)
+
+
+
     # ------------------------------
     # EXPOSURE CALCULATION
     # ------------------------------
@@ -69,12 +74,16 @@ class RiskEngine:
     @staticmethod
     def available_exposure(client_id: int) -> Decimal:
         profile = ClientRiskProfile.objects.get(client_id=client_id)
+
         used = RiskEngine.calculate_current_exposure(client_id)
 
-        return max(
-            Decimal("0.00"),
-            (profile.max_exposure - used).quantize(Decimal("0.01"))
-        )
+        available = profile.max_exposure - used
+
+        if available < 0:
+            return Decimal("0.00")
+
+        return available.quantize(Decimal("0.01"), ROUND_HALF_UP)
+
 
 
     # ------------------------------
@@ -142,8 +151,9 @@ class RiskEngine:
     def sync_margin_loan(client_id: int):
         """
         Auto-create / update / close MarginLoan
-        based on (Used Exposure − Cash)
+        based on Loan = max(0, Used − Cash)
         """
+
         loan_amount = RiskEngine.loan_amount(client_id)
 
         loan = (
@@ -154,9 +164,10 @@ class RiskEngine:
         )
 
         # -----------------------
-        # CASE 1: loan required
+        # CASE 1: Loan Required
         # -----------------------
-        if loan_amount > 0:
+        if loan_amount > Decimal("0.00"):
+
             if loan:
                 if loan.loan_amount != loan_amount:
                     loan.loan_amount = loan_amount
@@ -184,45 +195,53 @@ class RiskEngine:
             return loan
 
         # -----------------------
-        # CASE 2: loan not needed
+        # CASE 2: Loan Not Needed
         # -----------------------
         if loan:
             AuditLog.log_event(
                 event_type="MARGIN_LOAN_CLOSED",
                 client=loan.client,
                 loan=loan,
-                details={"reason": "Cash covers exposure"},
+                details={"reason": "Exposure covered by cash"},
             )
             loan.delete()
 
         return None
+
     # ------------------------------
     # POST-TRADE / MTM
     # ------------------------------
     @staticmethod
-    def enforce_post_trade(client_id):
+    def enforce_post_trade(client_id: int):
         """
-        Post-trade / MTM / policy enforcement
+        Post-trade / MTM enforcement
         """
+
+        # 1️⃣ Sync loan first
+        RiskEngine.sync_margin_loan(client_id)
+
+        # 2️⃣ Apply margin policy
+        RiskEngine.enforce_margin_policy(client_id)
+
         profile = ClientRiskProfile.objects.get(client_id=client_id)
         used = RiskEngine.calculate_current_exposure(client_id)
 
         if used > profile.max_exposure:
-            RiskEngine.enforce_margin_policy(client_id)
-
             raise RiskViolation(
                 f"Exposure breach: {used} > {profile.max_exposure}"
             )
 
+
+
     # ------------------------------
     # MARGIN POLICY ENFORCEMENT
     # ------------------------------
-
     @staticmethod
     def enforce_margin_policy(client_id: int):
         """
-        Margin enable/disable + loan sync
+        Enable / Disable margin based on utilization
         """
+
         profile = ClientRiskProfile.objects.select_related("client").get(
             client_id=client_id
         )
@@ -231,19 +250,51 @@ class RiskEngine:
             return
 
         used = RiskEngine.calculate_current_exposure(client_id)
-        utilization = (used / profile.max_exposure) * Decimal("100")
 
-        # 🔁 ALWAYS sync loan
-        RiskEngine.sync_margin_loan(client_id)
+        utilization = (
+            (used / profile.max_exposure) * Decimal("100")
+        ).quantize(Decimal("0.01"))
 
-        # ---------------- FORCE SELL / MARGIN CALL ----------------
-        if utilization >= UTILIZATION_LEVELS["MARGIN_CALL"]:
+        # 🔥 No double recalculation
+        if utilization < UTILIZATION_LEVELS["SAFE"]:
+            status = "SAFE"
+        elif utilization < UTILIZATION_LEVELS["WARNING"]:
+            status = "WARNING"
+        elif utilization < UTILIZATION_LEVELS["MARGIN_CALL"]:
+            status = "MARGIN_CALL"
+        else:
+            status = "FORCE_SELL"
+
+        # ---------------- FORCE SELL ----------------
+        if status == "FORCE_SELL":
+
             if profile.allow_margin:
                 profile.allow_margin = False
                 profile.save(update_fields=["allow_margin"])
 
                 AuditLog.log_event(
-                    event_type="MARGIN_DISABLED",
+                    event_type="FORCE_SELL_TRIGGERED",
+                    client=profile.client,
+                    details={
+                        "utilization": str(utilization),
+                        "used": str(used),
+                    },
+                )
+
+            # 🚨 EXECUTE LIQUIDATION
+            RiskEngine.auto_liquidate(client_id)
+
+            return
+
+
+        # ---------------- MARGIN CALL ----------------
+        if status == "MARGIN_CALL":
+            if profile.allow_margin:
+                profile.allow_margin = False
+                profile.save(update_fields=["allow_margin"])
+
+                AuditLog.log_event(
+                    event_type="MARGIN_CALL_TRIGGERED",
                     client=profile.client,
                     details={
                         "utilization": str(utilization),
@@ -252,7 +303,7 @@ class RiskEngine:
                 )
             return
 
-        # ---------------- SAFE ZONE ----------------
+        # ---------------- SAFE / WARNING ----------------
         if not profile.allow_margin:
             profile.allow_margin = True
             profile.save(update_fields=["allow_margin"])
@@ -265,6 +316,8 @@ class RiskEngine:
                     "used": str(used),
                 },
             )
+
+
 
 
         
@@ -298,3 +351,85 @@ class RiskEngine:
         elif u < UTILIZATION_LEVELS["MARGIN_CALL"]:
             return "MARGIN_CALL"
         return "FORCE_SELL"
+
+
+
+
+
+    @staticmethod
+    @transaction.atomic
+    def auto_liquidate(client_id: int):
+        """
+        Force-sell positions until utilization
+        falls below WARNING threshold
+        """
+
+        profile = ClientRiskProfile.objects.select_related("client").get(
+            client_id=client_id
+        )
+
+        max_exposure = profile.max_exposure
+
+        if max_exposure == 0:
+            return
+
+        warning_limit = UTILIZATION_LEVELS["WARNING"]
+
+        # Sort positions by highest margin exposure first
+        portfolios = (
+            Portfolio.objects
+            .select_related("instrument")
+            .filter(client_id=client_id)
+        )
+
+        positions = []
+
+        for p in portfolios:
+            rate = p.instrument.effective_margin_rate()
+            if rate <= 0:
+                continue
+
+            exposure = p.quantity * p.avg_price * rate
+
+            positions.append({
+                "obj": p,
+                "exposure": exposure,
+                "rate": rate,
+            })
+
+        # Sort descending exposure
+        positions.sort(key=lambda x: x["exposure"], reverse=True)
+
+        for pos in positions:
+
+            current_util = RiskEngine.margin_utilization(client_id)
+
+            if current_util < warning_limit:
+                break
+
+            p = pos["obj"]
+            rate = pos["rate"]
+
+            if p.quantity <= 0:
+                continue
+
+            # Sell 25% of position per iteration (controlled liquidation)
+            sell_qty = (p.quantity * Decimal("0.25")).quantize(Decimal("0.0001"))
+
+            if sell_qty <= 0:
+                sell_qty = p.quantity
+
+            p.quantity -= sell_qty
+            p.save(update_fields=["quantity"])
+
+            AuditLog.log_event(
+                event_type="AUTO_LIQUIDATION_EXECUTED",
+                client=profile.client,
+                details={
+                    "instrument": p.instrument.symbol,
+                    "quantity_sold": str(sell_qty),
+                },
+            )
+
+        # Final sync after liquidation
+        RiskEngine.sync_margin_loan(client_id)

@@ -4,29 +4,52 @@ from django.dispatch import receiver
 
 from core.models import Client
 from risk.models import ClientRiskProfile
-from risk.services.risk_engine import RiskEngine
 
 
+# @receiver(post_save, sender=Client)
+# def sync_client_risk_profile(sender, instance, created, **kwargs):
+#     """
+#     1. Ensure ClientRiskProfile exists
+#     2. Always keep max_exposure in sync with cash_balance
+#     """
+
+#     # --- Create on first client creation ---
+#     if created:
+#         risk = ClientRiskProfile.objects.create(
+#             client=instance,
+#             allow_margin=True,
+#             leverage_multiplier=Decimal("1.50"),
+#         )
+#         # ✅ MUST recalc here
+#         risk.recalculate()
+#         return
+
+#     # --- Existing client ---
+#     try:
+#         risk = instance.clientriskprofile
+#     except ClientRiskProfile.DoesNotExist:
+#         risk = ClientRiskProfile.objects.create(
+#             client=instance,
+#             allow_margin=True,
+#             leverage_multiplier=Decimal("1.50"),
+#         )
+
+#     # ✅ Always recalc on update
+#     risk.recalculate()
 @receiver(post_save, sender=Client)
 def sync_client_risk_profile(sender, instance, created, **kwargs):
-    """
-    1. Ensure risk profile exists
-    2. Recalculate max exposure on cash change
-    3. Enforce margin policy (EDR / FORCE_SELL)
-    """
 
-    # --- Create risk profile on first client creation ---
     if created:
-        ClientRiskProfile.objects.create(
+        risk = ClientRiskProfile.objects.create(
             client=instance,
             allow_margin=True,
             leverage_multiplier=Decimal("1.50"),
         )
+        risk.recalculate()
         return
 
-    # --- Existing client ---
     try:
-        risk = instance.clientriskprofile
+        risk = instance.risk_profile
     except ClientRiskProfile.DoesNotExist:
         risk = ClientRiskProfile.objects.create(
             client=instance,
@@ -34,8 +57,4 @@ def sync_client_risk_profile(sender, instance, created, **kwargs):
             leverage_multiplier=Decimal("1.50"),
         )
 
-    # --- Recalculate exposure ---
     risk.recalculate()
-
-    # --- Enforce margin policy (SAFE → WARNING → FORCE_SELL) ---
-    RiskEngine.enforce_margin_policy(instance.id)

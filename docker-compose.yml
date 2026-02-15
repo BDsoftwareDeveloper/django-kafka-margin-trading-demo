@@ -220,7 +220,10 @@ services:
     volumes:
       - ./app:/code
     environment:
-      - DATABASE_URL=postgresql://omsuser:omspassword@db:5432/omsdb
+      - POSTGRES_HOST=db
+      - POSTGRES_DB=omsdb
+      - POSTGRES_USER=omsuser
+      - POSTGRES_PASSWORD=omspassword
       - KAFKA_BROKER=kafka:9092
     depends_on:
       db:
@@ -230,6 +233,7 @@ services:
     networks:
       - app-network
 
+
   margin_consumer:
     build: ./app
     container_name: margin_consumer
@@ -237,7 +241,10 @@ services:
     volumes:
       - ./app:/code
     environment:
-      - DATABASE_URL=postgresql://omsuser:omspassword@db:5432/omsdb
+      - POSTGRES_HOST=db
+      - POSTGRES_DB=omsdb
+      - POSTGRES_USER=omsuser
+      - POSTGRES_PASSWORD=omspassword
       - KAFKA_BROKER=kafka:9092
     depends_on:
       db:
@@ -246,6 +253,7 @@ services:
         condition: service_started
     networks:
       - app-network
+
 
 networks:
   app-network:

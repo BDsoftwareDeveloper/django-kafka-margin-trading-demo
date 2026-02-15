@@ -1,8 +1,10 @@
 from django.db import models
-from django.utils import timezone
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 
+# ======================================================
+# INSTRUMENT
+# ======================================================
 
 class Instrument(models.Model):
     BOARD_CHOICES = (
@@ -22,6 +24,8 @@ class Instrument(models.Model):
     )
 
     is_marginable = models.BooleanField(default=False)
+
+    # Base margin rate
     margin_rate = models.DecimalField(
         max_digits=5,
         decimal_places=2,
@@ -32,32 +36,44 @@ class Instrument(models.Model):
         """
         Final margin rate after board rules
         """
+
         if not self.is_marginable:
             return Decimal("0.00")
 
+        # Z board → hard blocked
         if self.board == "Z":
-            return Decimal("0.00")  # ❌ Z board margin forbidden
+            return Decimal("0.00")
 
+        # B board → tighter
         if self.board == "B":
-            return self.margin_rate * Decimal("0.75")  # tighter
+            return (self.margin_rate * Decimal("0.75")).quantize(
+                Decimal("0.01"),
+                rounding=ROUND_HALF_UP,
+            )
 
-        return self.margin_rate  # A board
+        # A board
+        return self.margin_rate
 
     def __str__(self):
         return self.symbol
 
 
+# ======================================================
+# CLIENT
+# ======================================================
 
 class Client(models.Model):
     name = models.CharField(max_length=100)
     email = models.EmailField(unique=True)
 
+    # Liquid funds
     cash_balance = models.DecimalField(
         max_digits=20,
         decimal_places=2,
         default=Decimal("0.00"),
     )
 
+    # Pledged collateral (optional manual override)
     collateral_value = models.DecimalField(
         max_digits=20,
         decimal_places=2,
@@ -70,12 +86,17 @@ class Client(models.Model):
         return self.name
 
 
+# ======================================================
+# PORTFOLIO
+# ======================================================
+
 class Portfolio(models.Model):
     client = models.ForeignKey(
         Client,
         on_delete=models.CASCADE,
         related_name="portfolios",
     )
+
     instrument = models.ForeignKey(
         Instrument,
         on_delete=models.CASCADE,
@@ -85,25 +106,68 @@ class Portfolio(models.Model):
     quantity = models.DecimalField(max_digits=20, decimal_places=4)
     avg_price = models.DecimalField(max_digits=20, decimal_places=4)
 
+    # 🔐 NEW: pledged quantity (for collateral-based margin)
+    pledged_quantity = models.DecimalField(
+        max_digits=20,
+        decimal_places=4,
+        default=Decimal("0.0000"),
+    )
+
     class Meta:
         unique_together = ("client", "instrument")
 
+    # --------------------------------------
+    # MARKET VALUE
+    # --------------------------------------
     def market_value(self, market_price: Decimal | None = None) -> Decimal:
         price = market_price or self.avg_price
-        return (self.quantity * price).quantize(Decimal("0.01"))
+        return (self.quantity * price).quantize(
+            Decimal("0.01"),
+            rounding=ROUND_HALF_UP,
+        )
 
+    # --------------------------------------
+    # MARGIN VALUE (non-pledged)
+    # --------------------------------------
     def margin_value(self, market_price: Decimal | None = None) -> Decimal:
         """
-        Margin-eligible value (instrument rules only)
+        Margin exposure portion (non-pledged)
         """
+        price = market_price or self.avg_price
+
+        free_quantity = self.quantity - self.pledged_quantity
+        if free_quantity <= 0:
+            return Decimal("0.00")
+
+        base_value = free_quantity * price
         return (
-            self.market_value(market_price)
-            * self.instrument.effective_margin_rate()
-        ).quantize(Decimal("0.01"))
+            base_value * self.instrument.effective_margin_rate()
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    # --------------------------------------
+    # COLLATERAL VALUE (pledged shares)
+    # --------------------------------------
+    def collateral_value_calc(self, market_price: Decimal | None = None) -> Decimal:
+        price = market_price or self.avg_price
+
+        if self.pledged_quantity <= 0:
+            return Decimal("0.00")
+
+        pledged_value = self.pledged_quantity * price
+
+        # Collateral hair-cut rule (example 50%)
+        return (pledged_value * Decimal("0.50")).quantize(
+            Decimal("0.01"),
+            rounding=ROUND_HALF_UP,
+        )
 
     def __str__(self):
         return f"{self.client} - {self.instrument}"
 
+
+# ======================================================
+# MARGIN LOAN
+# ======================================================
 
 class MarginLoan(models.Model):
     client = models.ForeignKey(
@@ -113,6 +177,7 @@ class MarginLoan(models.Model):
     )
 
     loan_amount = models.DecimalField(max_digits=20, decimal_places=4)
+
     interest_rate = models.DecimalField(
         max_digits=5,
         decimal_places=2,
@@ -126,7 +191,9 @@ class MarginLoan(models.Model):
         return f"Loan({self.client}, {self.loan_amount})"
 
 
-
+# ======================================================
+# AUDIT LOG
+# ======================================================
 
 class AuditLog(models.Model):
     event_type = models.CharField(max_length=50)
@@ -161,4 +228,3 @@ class AuditLog(models.Model):
 
     def __str__(self):
         return f"{self.event_type} @ {self.created_at}"
-
