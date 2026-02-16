@@ -5,9 +5,9 @@ from .models import Client, Instrument, MarginLoan, Portfolio, AuditLog
 from risk.services.risk_engine import RiskEngine
 
 
-# -----------------------------
-# CLIENT ADMIN (OPS VIEW)
-# -----------------------------
+# =============================
+# CLIENT ADMIN
+# =============================
 @admin.register(Client)
 class ClientAdmin(admin.ModelAdmin):
 
@@ -15,9 +15,9 @@ class ClientAdmin(admin.ModelAdmin):
         "name",
         "email",
         "cash_balance",
-        "risk_max_exposure",
-        "risk_used_exposure",
-        "risk_utilization_pct",
+        "blocked_cash",
+        "loan_outstanding",
+        "margin_level_display",
         "created_at",
     ]
 
@@ -25,40 +25,32 @@ class ClientAdmin(admin.ModelAdmin):
     search_fields = ["name", "email"]
     ordering = ["-created_at"]
 
-    # ✅ Optimize DB
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        return qs.select_related("risk_profile")
+    def loan_outstanding(self, obj):
+        from core.models import MarginLoan
 
-    # ---------------- SAFE ACCESS ----------------
+        loan = (
+            MarginLoan.objects
+            .filter(client=obj, status="ACTIVE")
+            .first()
+        )
 
-    def risk_max_exposure(self, obj):
-        risk = getattr(obj, "risk_profile", None)
-        if not risk:
-            return "—"
-        return f"{risk.max_exposure:.2f}"
-
-    risk_max_exposure.short_description = "Max Exposure"
-
-    def risk_used_exposure(self, obj):
-        try:
-            used = RiskEngine.calculate_current_exposure(obj.id)
-            return f"{used:.2f}"
-        except Exception:
+        if not loan:
             return "0.00"
 
-    risk_used_exposure.short_description = "Used Exposure"
+        return f"{(loan.principal_amount + loan.accrued_interest):.2f}"
 
-    def risk_utilization_pct(self, obj):
+    loan_outstanding.short_description = "Loan"
+
+    def margin_level_display(self, obj):
         try:
-            utilization = RiskEngine.margin_utilization(obj.id)
+            snapshot = RiskEngine.equity_snapshot(obj.id)
+            level = snapshot["margin_level_percent"]
 
-            # Color-coded EDR
-            if utilization < 50:
+            if level >= 150:
                 color = "green"
-            elif utilization < 75:
+            elif level >= 120:
                 color = "orange"
-            elif utilization < 90:
+            elif level >= 100:
                 color = "#ff8c00"
             else:
                 color = "red"
@@ -66,93 +58,121 @@ class ClientAdmin(admin.ModelAdmin):
             return format_html(
                 '<strong style="color:{};">{} %</strong>',
                 color,
-                utilization,
+                level,
             )
 
         except Exception:
-            return "0.00 %"
-
-    risk_utilization_pct.short_description = "Utilization (EDR %)"
+            return "—"
 
 
-# -----------------------------
+    margin_level_display.short_description = "Margin Level %"
+
+
+# =============================
 # INSTRUMENT ADMIN
-# -----------------------------
+# =============================
 @admin.register(Instrument)
 class InstrumentAdmin(admin.ModelAdmin):
+
     list_display = [
         "symbol",
         "name",
         "exchange",
         "board",
         "is_marginable",
-        "margin_rate",
+        "initial_margin_rate",
+        "maintenance_margin_rate",
+        "is_active",
     ]
 
     list_filter = [
         "exchange",
         "board",
         "is_marginable",
+        "is_active",
     ]
 
     search_fields = ["symbol", "name"]
 
 
-# -----------------------------
+# =============================
 # MARGIN LOAN ADMIN
-# -----------------------------
+# =============================
 @admin.register(MarginLoan)
 class MarginLoanAdmin(admin.ModelAdmin):
+
     list_display = [
         "client",
-        "loan_amount",
+        "principal_amount",
+        "accrued_interest",
         "interest_rate",
-        "created_at",
+        "status",
+        "opened_at",
+        "closed_at",
     ]
 
-    list_filter = ["created_at"]
+    list_filter = [
+        "status",
+        "opened_at",
+    ]
+
     search_fields = ["client__name"]
 
 
-# -----------------------------
+# =============================
 # PORTFOLIO ADMIN
-# -----------------------------
+# =============================
 @admin.register(Portfolio)
 class PortfolioAdmin(admin.ModelAdmin):
+
     list_display = [
         "client",
         "instrument",
         "quantity",
         "avg_price",
         "position_value",
-        "margin_exposure",
     ]
 
-    list_filter = ["instrument__exchange", "instrument__board"]
-    search_fields = ["client__name", "instrument__symbol"]
+    list_filter = [
+        "instrument__exchange",
+        "instrument__board",
+    ]
 
-    readonly_fields = ["position_value", "margin_exposure"]
+    search_fields = [
+        "client__name",
+        "instrument__symbol",
+    ]
+
+    readonly_fields = ["position_value"]
 
     def position_value(self, obj):
-        return obj.quantity * obj.avg_price
+        return (obj.quantity * obj.avg_price).quantize(
+            Decimal("0.01")
+        )
+
     position_value.short_description = "Position Value"
 
-    def margin_exposure(self, obj):
-        rate = obj.instrument.effective_margin_rate()
-        return obj.quantity * obj.avg_price * rate
-    margin_exposure.short_description = "Margin Exposure"
 
-
-# -----------------------------
-# AUDIT LOG ADMIN (READ ONLY)
-# -----------------------------
+# =============================
+# AUDIT LOG ADMIN
+# =============================
 @admin.register(AuditLog)
 class AuditLogAdmin(admin.ModelAdmin):
+
     list_display = [
         "event_type",
         "client",
         "created_at",
     ]
 
-    list_filter = ["event_type", "created_at"]
-    readonly_fields = ["created_at"]
+    list_filter = [
+        "event_type",
+        "created_at",
+    ]
+
+    readonly_fields = [
+        "event_type",
+        "client",
+        "details",
+        "created_at",
+    ]

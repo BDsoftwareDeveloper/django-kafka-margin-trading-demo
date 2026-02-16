@@ -44,11 +44,10 @@ class KafkaProducerWrapper:
 
             # ✅ Also log the event into AuditLog
             AuditLog.log_event(
-                event_type=event.get("type"),
-                client=client,
-                loan=loan,
-                details=event,
-            )
+            event_type=event.get("type"),
+            client=client,
+            details=event,
+        )
 
             return True
         except Exception as e:

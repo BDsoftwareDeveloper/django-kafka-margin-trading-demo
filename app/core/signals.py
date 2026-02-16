@@ -12,8 +12,15 @@ logger = logging.getLogger(__name__)
 def marginloan_created(sender, instance, created, **kwargs):
     """Send Kafka event when a MarginLoan is created"""
     if created:
-        logger.info(f"📢 MarginLoan created for client={instance.client.id} amount={instance.loan_amount}")
-        publish_margin_request(client_id=instance.client.id, amount=float(instance.loan_amount))
+        logger.info(
+            f"📢 MarginLoan created for client={instance.client.id} "
+            f"principal={instance.principal_amount}"
+        )
+
+        publish_margin_request(
+            client_id=instance.client.id,
+            amount=float(instance.principal_amount),
+        )
 
 
 @receiver(post_save, sender=Portfolio)

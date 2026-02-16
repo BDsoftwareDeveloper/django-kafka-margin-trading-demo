@@ -8,85 +8,99 @@ from risk.serializers import ClientRiskProfileSerializer
 from risk.services.risk_engine import RiskEngine
 
 
+
+from rest_framework.views import APIView
+from risk.serializers import HouseRiskSerializer
+
+
+from risk.services.house_risk_service import HouseRiskService
+
 class ClientRiskProfileViewSet(viewsets.ModelViewSet):
     """
-    Risk profile management API
+    Institutional Risk Profile API (Equity-Based)
     """
+
     queryset = ClientRiskProfile.objects.select_related("client")
     serializer_class = ClientRiskProfileSerializer
-    http_method_names = ["get", "post"]  # 🔒 no PUT/PATCH/DELETE
+    http_method_names = ["get"]  # 🔒 read-only (institutional)
 
-    # --------------------------------
-    # RECALCULATE MAX EXPOSURE
-    # --------------------------------
+    # ---------------------------------------------------
+    # LIVE EQUITY SNAPSHOT
+    # ---------------------------------------------------
     @extend_schema(
-        description="Recalculate max exposure (cash × leverage)",
-    )
-    @action(detail=True, methods=["post"])
-    def recalculate(self, request, pk=None):
-        risk = self.get_object()
-        risk.recalculate()
-
-        # Enforce margin policy after recalculation
-        RiskEngine.enforce_margin_policy(risk.client_id)
-
-        return Response(
-            {
-                "client_id": risk.client_id,
-                "max_exposure": str(risk.max_exposure),
-                "allow_margin": risk.allow_margin,
-            }
-        )
-
-    # --------------------------------
-    # LIVE UTILIZATION / EDR
-    # --------------------------------
-    @extend_schema(
-        description="Get live margin utilization (EDR%), exposure and status",
+        description="Get real-time institutional equity-based margin snapshot",
     )
     @action(detail=True, methods=["get"])
-    def utilization(self, request, pk=None):
+    def snapshot(self, request, pk=None):
+
         risk = self.get_object()
         client = risk.client
 
-        used = RiskEngine.calculate_current_exposure(client.id)
-        loan = RiskEngine.loan_amount(client.id)
-        edr = RiskEngine.margin_utilization(client.id)
+        snapshot = RiskEngine.equity_snapshot(client.id)
 
-        return Response(
-            {
-                "client_id": client.id,
-                "client_name": client.name,
-                "cash_balance": str(client.cash_balance),
-                "used_exposure": str(used),
-                "loan_amount": str(loan),              # ✅
-                "max_exposure": str(risk.max_exposure),
-                "edr_percent": str(edr),
-                "edr_status": RiskEngine.utilization_status(client.id),
-                "allow_margin": risk.allow_margin,
+        return Response({
+            "client_id": client.id,
+            "client_name": client.name,
+            "cash_balance": str(client.cash_balance),
+
+            "market_value": str(snapshot["market_value"]),
+            "loan": str(snapshot["loan"]),
+            "net_equity": str(snapshot["net_equity"]),
+            "maintenance_requirement": str(snapshot["maintenance_requirement"]),
+            "margin_level_percent": str(snapshot["margin_level_percent"]),
+
+            "margin_status": risk.current_status,
+            "allow_margin": risk.allow_margin,
+
+            "thresholds": {
+                "warning_level": str(risk.warning_level),
+                "margin_call_level": str(risk.margin_call_level),
+                "force_sell_level": str(risk.force_sell_level),
             }
-        )
+        })
 
-
-
-    # --------------------------------
-    # MANUAL MARGIN TOGGLE (ADMIN)
-    # --------------------------------
+    # ---------------------------------------------------
+    # FORCE RE-EVALUATE STATUS
+    # ---------------------------------------------------
     @extend_schema(
-        description="Manually enable/disable margin (Admin override)",
+        description="Re-evaluate client margin status (equity-based engine)",
+    )
+    @action(detail=True, methods=["post"])
+    def recheck(self, request, pk=None):
+
+        risk = self.get_object()
+
+        # Run institutional margin engine
+        RiskEngine.enforce_margin_policy(risk.client_id)
+
+        snapshot = RiskEngine.equity_snapshot(risk.client_id)
+
+        return Response({
+            "client_id": risk.client_id,
+            "margin_level_percent": str(snapshot["margin_level_percent"]),
+            "new_status": risk.current_status,
+            "allow_margin": risk.allow_margin,
+        })
+
+    # ---------------------------------------------------
+    # ADMIN OVERRIDE
+    # ---------------------------------------------------
+    @extend_schema(
+        description="Manual margin override (Admin only)",
     )
     @action(detail=True, methods=["post"])
     def toggle_margin(self, request, pk=None):
+
         risk = self.get_object()
 
         allow = request.data.get("allow_margin")
+
         if allow is None:
             return Response(
                 {"error": "allow_margin is required (true/false)"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ✅ Safe boolean parsing
         if isinstance(allow, bool):
             value = allow
         elif isinstance(allow, str):
@@ -97,9 +111,23 @@ class ClientRiskProfileViewSet(viewsets.ModelViewSet):
         risk.allow_margin = value
         risk.save(update_fields=["allow_margin"])
 
-        return Response(
-            {
-                "client_id": risk.client_id,
-                "allow_margin": risk.allow_margin,
-            }
-        )
+        return Response({
+            "client_id": risk.client_id,
+            "allow_margin": risk.allow_margin,
+        })
+
+
+
+class HouseRiskDashboardAPIView(APIView):
+
+    @extend_schema(
+        tags=["House Risk"],
+        responses=HouseRiskSerializer,
+        description="Institutional house-level margin monitoring snapshot",
+    )
+    def get(self, request):
+
+        data = HouseRiskService.snapshot()
+
+        serializer = HouseRiskSerializer(data)
+        return Response(serializer.data)

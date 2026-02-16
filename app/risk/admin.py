@@ -1,3 +1,4 @@
+# risk/admin.py
 
 from django.contrib import admin
 from django.utils.html import format_html
@@ -8,66 +9,36 @@ from risk.services.risk_engine import RiskEngine
 
 @admin.register(ClientRiskProfile)
 class ClientRiskProfileAdmin(admin.ModelAdmin):
+
     list_display = [
-    "client",
-    "max_exposure",
-    "used_exposure",
-    "loan_amount",     # ✅
-    "edr_percent",
-    "edr_status",
-    "allow_margin",
-    "created_at",
-]
+        "client",
+        "colored_status",
+        "colored_margin_level",
+        "net_equity",
+        "colored_loan",
+        "allow_margin",
+        "updated_at",
+    ]
 
-    list_filter = ["allow_margin"]
-    search_fields = ["client__name", "client__email"]
-    readonly_fields = ["max_exposure"]
-    
+    readonly_fields = [
+        "colored_status",
+        "colored_margin_level",
+        "net_equity",
+        "colored_loan",
+        "updated_at",
+    ]
 
-    # ---------- COMPUTED COLUMNS ----------
-    
-    def loan_amount(self, obj):
-        loan = RiskEngine.loan_amount(obj.client_id)
+    # ---------------------------------------------------
+    # Snapshot Helper
+    # ---------------------------------------------------
+    def _snapshot(self, obj):
+        return RiskEngine.equity_snapshot(obj.client_id)
 
-        if loan == 0:
-            return format_html('<span style="color:green;">0.00</span>')
-
-        return format_html(
-            '<strong style="color:red;">{}</strong>',
-            f"{loan:.2f}"
-        )
-
-    loan_amount.short_description = "Loan Amount"
-
-    def used_exposure(self, obj):
-        used = RiskEngine.calculate_current_exposure(obj.client_id)
-        return f"{used:.2f}"
-
-    used_exposure.short_description = "Used Exposure"
-
-    def edr_percent(self, obj):
-        utilization = RiskEngine.margin_utilization(obj.client_id)
-
-        # Color rules
-        if utilization < 50:
-            color = "green"
-        elif utilization < 75:
-            color = "orange"
-        elif utilization < 90:
-            color = "#ff8c00"
-        else:
-            color = "red"
-
-        return format_html(
-            '<strong style="color:{};">{}%</strong>',
-            color,
-            utilization,
-        )
-
-    edr_percent.short_description = "EDR %"
-
-    def edr_status(self, obj):
-        status = RiskEngine.utilization_status(obj.client_id)
+    # ---------------------------------------------------
+    # STATUS (Color-coded)
+    # ---------------------------------------------------
+    def colored_status(self, obj):
+        status = obj.current_status
 
         color_map = {
             "SAFE": "green",
@@ -77,9 +48,56 @@ class ClientRiskProfileAdmin(admin.ModelAdmin):
         }
 
         return format_html(
-            '<span style="color:{}; font-weight:bold;">{}</span>',
+            '<strong style="color:{};">{}</strong>',
             color_map.get(status, "black"),
             status,
         )
 
-    edr_status.short_description = "Risk Status"
+    colored_status.short_description = "Risk Status"
+
+    # ---------------------------------------------------
+    # Margin Level %
+    # ---------------------------------------------------
+    def colored_margin_level(self, obj):
+        snapshot = self._snapshot(obj)
+        level = snapshot["margin_level_percent"]
+
+        if level >= 150:
+            color = "green"
+        elif level >= 120:
+            color = "orange"
+        elif level >= 100:
+            color = "#ff8c00"
+        else:
+            color = "red"
+
+        return format_html(
+            '<strong style="color:{};">{}%</strong>',
+            color,
+            level,
+        )
+
+    colored_margin_level.short_description = "Margin Level %"
+
+    # ---------------------------------------------------
+    # Net Equity
+    # ---------------------------------------------------
+    def net_equity(self, obj):
+        snapshot = self._snapshot(obj)
+        return snapshot["net_equity"]
+
+    # ---------------------------------------------------
+    # Loan Amount
+    # ---------------------------------------------------
+    def colored_loan(self, obj):
+        loan = RiskEngine.loan_amount(obj.client_id)
+
+        if loan == 0:
+            return format_html('<span style="color:green;">0.00</span>')
+
+        return format_html(
+            '<strong style="color:red;">{}</strong>',
+            loan,
+        )
+
+    colored_loan.short_description = "Loan Amount"
