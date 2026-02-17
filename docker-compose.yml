@@ -1,12 +1,145 @@
 
+# services:
+
+#   web:
+#     build: ./app
+#     container_name: oms_django
+#     command: >
+#       sh -c "python manage.py migrate &&
+#              python manage.py runserver 0.0.0.0:8000"
+#     volumes:
+#       - ./app:/code
+#     ports:
+#       - "8000:8000"
+#     environment:
+#       - POSTGRES_HOST=db
+#       - POSTGRES_DB=omsdb
+#       - POSTGRES_USER=omsuser
+#       - POSTGRES_PASSWORD=omspassword
+#       - DATABASE_URL=postgresql://omsuser:omspassword@db:5432/omsdb
+#       - KAFKA_BROKER=kafka:9092
+#     depends_on:
+#       db:
+#         condition: service_healthy
+#       kafka:
+#         condition: service_started
+#     networks:
+#       - app-network
+
+#   db:
+#     image: postgres:15
+#     container_name: oms_postgres
+#     restart: always
+#     environment:
+#       POSTGRES_DB: omsdb
+#       POSTGRES_USER: omsuser
+#       POSTGRES_PASSWORD: omspassword
+#     command: >
+#       postgres -c listen_addresses='*'
+#               -c ssl=off
+#     volumes:
+#       - ./postgres_data:/var/lib/postgresql/data
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -U omsuser -d omsdb"]
+#       interval: 5s
+#       timeout: 5s
+#       retries: 10
+#     networks:
+#       - app-network
+
+#   zookeeper:
+#     image: confluentinc/cp-zookeeper:7.6.1
+#     container_name: oms_zookeeper
+#     environment:
+#       ZOOKEEPER_CLIENT_PORT: 2181
+#     networks:
+#       - app-network
+
+#   kafka:
+#     image: confluentinc/cp-kafka:7.6.1
+#     container_name: oms_kafka
+#     ports:
+#       - "9092:9092"
+#     environment:
+#       KAFKA_BROKER_ID: 1
+#       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+#       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+#       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+#       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+#     depends_on:
+#       - zookeeper
+#     networks:
+#       - app-network
+
+
+
+
+
+#   portfolio_consumer:
+#     build: ./app
+#     container_name: portfolio_consumer
+#     command: python -m core.consumers portfolio
+#     volumes:
+#       - ./app:/code
+#     environment:
+#       - POSTGRES_HOST=db
+#       - POSTGRES_DB=omsdb
+#       - POSTGRES_USER=omsuser
+#       - POSTGRES_PASSWORD=omspassword
+#       - KAFKA_BROKER=kafka:9092
+#     depends_on:
+#       db:
+#         condition: service_healthy
+#       kafka:
+#         condition: service_started
+#     networks:
+#       - app-network
+
+
+#   margin_consumer:
+#     build: ./app
+#     container_name: margin_consumer
+#     command: python -m core.consumers margin
+#     volumes:
+#       - ./app:/code
+#     environment:
+#       - POSTGRES_HOST=db
+#       - POSTGRES_DB=omsdb
+#       - POSTGRES_USER=omsuser
+#       - POSTGRES_PASSWORD=omspassword
+#       - KAFKA_BROKER=kafka:9092
+#     depends_on:
+#       db:
+#         condition: service_healthy
+#       kafka:
+#         condition: service_started
+#     networks:
+#       - app-network
+
+
+# networks:
+#   app-network:
+#     driver: bridge
+
+# volumes:
+#   postgres_data:
+
+
+
+
+
 services:
 
   web:
     build: ./app
     container_name: oms_django
     command: >
-      sh -c "python manage.py migrate &&
-             python manage.py runserver 0.0.0.0:8000"
+      sh -c "
+      python manage.py migrate &&
+      python manage.py create_default_superuser &&
+      python manage.py runserver 0.0.0.0:8000
+      "
+
     volumes:
       - ./app:/code
     ports:
@@ -18,6 +151,17 @@ services:
       - POSTGRES_PASSWORD=omspassword
       - DATABASE_URL=postgresql://omsuser:omspassword@db:5432/omsdb
       - KAFKA_BROKER=kafka:9092
+
+      # ✅ BackOffice Config
+      - BACKOFFICE_BASE_URL=http://120.50.19.238:987/api
+      - BACKOFFICE_USERNAME=ben-oms
+      - BACKOFFICE_PASSWORD=Oms@123
+
+       # 👇 Add these
+      - DJANGO_SUPERUSER_USERNAME=admin
+      - DJANGO_SUPERUSER_EMAIL=admin@gmail.com
+      - DJANGO_SUPERUSER_PASSWORD=admin@123
+
     depends_on:
       db:
         condition: service_healthy
@@ -25,6 +169,7 @@ services:
         condition: service_started
     networks:
       - app-network
+
 
   db:
     image: postgres:15
@@ -47,6 +192,7 @@ services:
     networks:
       - app-network
 
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.1
     container_name: oms_zookeeper
@@ -54,6 +200,7 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
     networks:
       - app-network
+
 
   kafka:
     image: confluentinc/cp-kafka:7.6.1
@@ -70,9 +217,6 @@ services:
       - zookeeper
     networks:
       - app-network
-
-
-
 
 
   portfolio_consumer:
@@ -120,6 +264,7 @@ services:
 networks:
   app-network:
     driver: bridge
+
 
 volumes:
   postgres_data:

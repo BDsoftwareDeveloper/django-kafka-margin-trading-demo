@@ -1,4 +1,3 @@
-from decimal import Decimal
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
@@ -17,5 +16,4 @@ def sync_client_risk_profile(sender, instance, created, **kwargs):
         ClientRiskProfile.objects.create(
             client=instance,
             allow_margin=True,
-            leverage_multiplier=Decimal("1.50"),
         )

@@ -25,6 +25,14 @@ SECRET_KEY = 'django-insecure-ok7eihn2z5kq)k4b@#+1*7y2z39p9+sqt^p)@&2k_ttl#d__!=
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+
+# Backoffice API credentials (loaded from environment variables)
+BACKOFFICE_BASE_URL = os.environ.get("BACKOFFICE_BASE_URL")
+BACKOFFICE_USERNAME = os.environ.get("BACKOFFICE_USERNAME")
+BACKOFFICE_PASSWORD = os.environ.get("BACKOFFICE_PASSWORD")
+
+
+
 ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
@@ -41,13 +49,16 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'core', # ✅ add our app
-    # 'risk', # ✅ add our risk app
+
+    'core',
+    "backoffice",   # ← ✅ ADD THIS COMMA
     "risk.apps.RiskConfig",
+
     "rest_framework",
     "drf_spectacular",
-    "drf_spectacular_sidecar",  # includes Swagger & ReDoc templates
+    "drf_spectacular_sidecar",
 ]
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
