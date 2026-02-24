@@ -1,7 +1,88 @@
 from rest_framework import serializers
 from risk.models import ClientRiskProfile
 from risk.services.risk_engine import RiskEngine
+from risk.models import ExposureTemplate
+from core.models import Instrument
+from risk.models import ClientGroup
 
+
+class ClientGroupSerializer(serializers.ModelSerializer):
+
+    template_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ClientGroup
+        fields = [
+            "id",
+            "name",
+            "description",
+            "is_active",
+            "created_at",
+            "template_count",
+        ]
+
+    def get_template_count(self, obj):
+        return obj.exposure_templates.count()
+    
+    
+
+
+
+
+
+
+class ExposureTemplateSerializer(serializers.ModelSerializer):
+
+    # Write-only IDs
+    instrument_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Instrument.objects.all(),
+        source="instruments",
+        write_only=True,
+        required=False,
+    )
+
+    group_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=ClientGroup.objects.all(),
+        source="client_groups",
+        write_only=True,
+        required=False,
+    )
+
+    # Read-only display
+    instruments = serializers.StringRelatedField(many=True, read_only=True)
+    client_groups = serializers.StringRelatedField(many=True, read_only=True)
+
+    instrument_count = serializers.SerializerMethodField()
+    group_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ExposureTemplate
+        fields = [
+            "id",
+            "name",
+            "description",
+            "max_exposure_percent",
+            "is_active",
+            "is_system",
+            "created_at",
+
+            "instrument_ids",
+            "group_ids",
+
+            "instruments",
+            "client_groups",
+
+            "instrument_count",
+            "group_count",
+        ]
+
+    def get_instrument_count(self, obj):
+        return obj.instruments.count()
+
+    def get_group_count(self, obj):
+        return obj.client_groups.count()
 
 class ClientRiskProfileSerializer(serializers.ModelSerializer):
 

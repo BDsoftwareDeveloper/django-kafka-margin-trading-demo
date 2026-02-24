@@ -1,7 +1,36 @@
 from django.db import models
 from decimal import Decimal
-
 from django.db.models import Q
+from django.core.exceptions import ValidationError
+
+
+
+class Module(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+
+    def __str__(self):
+        return self.name
+
+
+class Permission(models.Model):
+
+    ACTION_CHOICES = (
+        ("VIEW", "View"),
+        ("CREATE", "Create"),
+        ("UPDATE", "Update"),
+        ("DELETE", "Delete"),
+        ("FORCE_SELL", "Force Sell"),
+    )
+
+    role = models.ForeignKey("accounts.Role", on_delete=models.CASCADE)
+    module = models.ForeignKey(Module, on_delete=models.CASCADE)
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+
+    class Meta:
+        unique_together = ("role", "module", "action")
+
+    def __str__(self):
+        return f"{self.role.name} - {self.module.name} - {self.action}"
 
 # ======================================================
 # INSTRUMENT
@@ -79,6 +108,62 @@ class MarketPrice(models.Model):
 # CLIENT
 # ======================================================
 
+# class Client(models.Model):
+
+#     CATEGORY_CHOICES = (
+#         ("A", "A Type"),
+#         ("B", "B Type"),
+#         ("G", "G Type"),
+#         ("N", "N Type"),
+#     )
+
+#     # ✅ BackOffice reference code
+#     client_code = models.CharField(
+#         max_length=20,
+#         unique=True,
+#         db_index=True,
+#     )
+
+#     name = models.CharField(max_length=100)
+#     email = models.EmailField(blank=True, null=True)
+
+#     category = models.CharField(
+#         max_length=1,
+#         choices=CATEGORY_CHOICES,
+#         default="A",
+#     )
+
+#     # Liquid available cash
+#     cash_balance = models.DecimalField(
+#         max_digits=20,
+#         decimal_places=2,
+#         default=Decimal("0.00"),
+#     )
+
+#     # Cash reserved by open BUY orders
+#     blocked_cash = models.DecimalField(
+#         max_digits=20,
+#         decimal_places=2,
+#         default=Decimal("0.00"),
+#     )
+
+#     # Collateral pledged manually
+#     collateral_value = models.DecimalField(
+#         max_digits=20,
+#         decimal_places=2,
+#         default=Decimal("0.00"),
+#     )
+
+#     is_active = models.BooleanField(default=True)
+
+#     created_at = models.DateTimeField(auto_now_add=True)
+
+#     def __str__(self):
+#         return f"{self.client_code} - {self.name}"
+
+
+
+
 class Client(models.Model):
 
     CATEGORY_CHOICES = (
@@ -88,7 +173,6 @@ class Client(models.Model):
         ("N", "N Type"),
     )
 
-    # ✅ BackOffice reference code
     client_code = models.CharField(
         max_length=20,
         unique=True,
@@ -104,21 +188,26 @@ class Client(models.Model):
         default="A",
     )
 
-    # Liquid available cash
+    group = models.ForeignKey(
+        "risk.ClientGroup",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="clients",
+    )
+
     cash_balance = models.DecimalField(
         max_digits=20,
         decimal_places=2,
         default=Decimal("0.00"),
     )
 
-    # Cash reserved by open BUY orders
     blocked_cash = models.DecimalField(
         max_digits=20,
         decimal_places=2,
         default=Decimal("0.00"),
     )
 
-    # Collateral pledged manually
     collateral_value = models.DecimalField(
         max_digits=20,
         decimal_places=2,
@@ -129,11 +218,23 @@ class Client(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        ordering = ["client_code"]
+        indexes = [
+            models.Index(fields=["is_active"]),
+            models.Index(fields=["group"]),
+        ]
+
+    @property
+    def available_cash(self):
+        return self.cash_balance - self.blocked_cash
+
+    def clean(self):
+        if self.cash_balance < 0:
+            raise ValidationError("Cash balance cannot be negative.")
+
     def __str__(self):
         return f"{self.client_code} - {self.name}"
-
-
-
 
 # ======================================================
 # PORTFOLIO (POSITIONS)
@@ -232,18 +333,10 @@ class MarginLoan(models.Model):
 
     opened_at = models.DateTimeField(auto_now_add=True)
     closed_at = models.DateTimeField(null=True, blank=True)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["client"],
-                condition=Q(status="ACTIVE"),
-                name="unique_active_margin_loan_per_client",
-            )
-        ]
-
+    
     def __str__(self):
-        return f"Loan({self.client}, {self.principal_amount}, {self.status})"
+        return f"{self.client} - {self.principal_amount} - {self.status}"
+
 
 
 

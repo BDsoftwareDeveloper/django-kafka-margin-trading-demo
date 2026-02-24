@@ -3,10 +3,22 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from risk.models import ClientRiskProfile
+from django.db.models import Count
+
+
+from risk.models import ClientRiskProfile,ExposureTemplate, TemplateInstrument
 from risk.services.risk_engine import RiskEngine
 
 
+
+from risk.models import ClientGroup
+
+
+@admin.register(ClientGroup)
+class ClientGroupAdmin(admin.ModelAdmin):
+    list_display = ("name", "is_active", "created_at")
+    search_fields = ("name",)
+    list_filter = ("is_active",)
 @admin.register(ClientRiskProfile)
 class ClientRiskProfileAdmin(admin.ModelAdmin):
 
@@ -101,3 +113,94 @@ class ClientRiskProfileAdmin(admin.ModelAdmin):
         )
 
     colored_loan.short_description = "Loan Amount"
+
+
+
+
+# =====================================================
+# INLINE: Template ↔ Instrument Mapping
+# =====================================================
+
+class TemplateInstrumentInline(admin.TabularInline):
+    model = TemplateInstrument
+    extra = 1
+    autocomplete_fields = ["instrument"]
+    fields = (
+        "instrument",
+        "priority",
+        "effective_from",
+        "effective_to",
+    )
+    ordering = ("priority",)
+    
+
+@admin.register(ExposureTemplate)
+class ExposureTemplateAdmin(admin.ModelAdmin):
+
+    list_display = (
+        "name",
+        "instrument_list",
+        "instrument_count_display",
+        "is_active",
+        "created_at",
+    )
+
+    search_fields = ("name",)
+    list_filter = ("is_active",)
+
+    filter_horizontal = ("instruments",)
+    readonly_fields = ("created_at",)
+
+    # Optimize DB query
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.prefetch_related("instruments").annotate(
+            _instrument_count=Count("instruments")
+        )
+
+    # Show instrument list (limited for readability)
+    def instrument_list(self, obj):
+        instruments = obj.instruments.all()
+
+        if not instruments:
+            return "-"
+
+        symbols = [i.symbol for i in instruments[:8]]
+
+        if obj._instrument_count > 8:
+            return format_html(
+                "{} <span style='color:gray;'>(+{} more)</span>",
+                ", ".join(symbols),
+                obj._instrument_count - 8,
+            )
+
+        return ", ".join(symbols)
+
+    instrument_list.short_description = "Instruments"
+
+    def instrument_count_display(self, obj):
+        return format_html("<strong>{}</strong>", obj._instrument_count)
+
+    instrument_count_display.short_description = "Count"
+    instrument_count_display.admin_order_field = "_instrument_count"
+    
+@admin.register(TemplateInstrument)
+class TemplateInstrumentAdmin(admin.ModelAdmin):
+
+    list_display = (
+        "template",
+        "instrument",
+        "priority",
+        "effective_from",
+        "effective_to",
+    )
+
+    list_filter = ("template",)
+    search_fields = (
+        "template__name",
+        "instrument__symbol",
+    )
+
+    autocomplete_fields = ["template", "instrument"]
+
+    ordering = ("template", "priority")

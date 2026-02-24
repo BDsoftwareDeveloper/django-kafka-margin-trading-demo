@@ -1,37 +1,245 @@
+
+# """
+# Django settings for oms_margin_demo project.
+# OMS Margin Loan System - Clean Dev Configuration
+# """
+
+# import os
+# from pathlib import Path
+
+# BASE_DIR = Path(__file__).resolve().parent.parent
+
+# # =========================================================
+# # SECURITY
+# # =========================================================
+
+# SECRET_KEY = os.environ.get(
+#     "DJANGO_SECRET_KEY",
+#     "django-insecure-change-this"
+# )
+
+# DEBUG = os.environ.get("DJANGO_DEBUG", "True") == "True"
+
+# ALLOWED_HOSTS = [
+#     "localhost",
+#     "127.0.0.1",
+#     "192.168.1.214",
+# ]
+
+# # =========================================================
+# # BACKOFFICE API
+# # =========================================================
+
+# BACKOFFICE_BASE_URL = os.environ.get("BACKOFFICE_BASE_URL")
+# BACKOFFICE_USERNAME = os.environ.get("BACKOFFICE_USERNAME")
+# BACKOFFICE_PASSWORD = os.environ.get("BACKOFFICE_PASSWORD")
+
+# # =========================================================
+# # APPLICATIONS
+# # =========================================================
+
+# INSTALLED_APPS = [
+#     # Django Core
+#     "django.contrib.admin",
+#     "django.contrib.auth",
+#     "django.contrib.contenttypes",
+#     "django.contrib.sessions",
+#     "django.contrib.messages",
+#     "django.contrib.staticfiles",
+
+#     # Third-party
+#     "corsheaders",
+#     "rest_framework",
+#     "drf_spectacular",
+#     "drf_spectacular_sidecar",
+#     "django_filters",
+
+#     # Local apps
+#     "accounts",
+#     "core",
+#     "backoffice",
+#     "risk.apps.RiskConfig",
+# ]
+
+# # =========================================================
+# # MIDDLEWARE
+# # =========================================================
+
+# MIDDLEWARE = [
+#     "django.middleware.security.SecurityMiddleware",
+#     "corsheaders.middleware.CorsMiddleware",  # MUST stay high
+#     "django.contrib.sessions.middleware.SessionMiddleware",
+#     "django.middleware.common.CommonMiddleware",
+#     "django.middleware.csrf.CsrfViewMiddleware",
+#     "django.contrib.auth.middleware.AuthenticationMiddleware",
+#     "django.contrib.messages.middleware.MessageMiddleware",
+#     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+# ]
+
+# ROOT_URLCONF = "oms_margin_demo.urls"
+# WSGI_APPLICATION = "oms_margin_demo.wsgi.application"
+
+# # =========================================================
+# # TEMPLATES (Required for Admin)
+# # =========================================================
+
+# TEMPLATES = [
+#     {
+#         "BACKEND": "django.template.backends.django.DjangoTemplates",
+#         "DIRS": [BASE_DIR / "templates"],
+#         "APP_DIRS": True,
+#         "OPTIONS": {
+#             "context_processors": [
+#                 "django.template.context_processors.debug",
+#                 "django.template.context_processors.request",
+#                 "django.contrib.auth.context_processors.auth",
+#                 "django.contrib.messages.context_processors.messages",
+#             ],
+#         },
+#     },
+# ]
+
+# # =========================================================
+# # DATABASE (PostgreSQL - Docker Ready)
+# # =========================================================
+
+# DATABASES = {
+#     "default": {
+#         "ENGINE": "django.db.backends.postgresql",
+#         "NAME": os.environ.get("POSTGRES_DB", "omsdb"),
+#         "USER": os.environ.get("POSTGRES_USER", "omsuser"),
+#         "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "omspassword"),
+#         "HOST": os.environ.get("POSTGRES_HOST", "db"),
+#         "PORT": os.environ.get("POSTGRES_PORT", "5432"),
+#     }
+# }
+
+# # =========================================================
+# # KAFKA
+# # =========================================================
+
+# KAFKA_BOOTSTRAP_SERVERS = os.environ.get(
+#     "KAFKA_BOOTSTRAP_SERVERS",
+#     "kafka:9092"
+# ).split(",")
+
+# # =========================================================
+# # DRF CONFIG (Session Authentication)
+# # =========================================================
+
+# REST_FRAMEWORK = {
+#     "DEFAULT_AUTHENTICATION_CLASSES": (
+#         "rest_framework_simplejwt.authentication.JWTAuthentication",
+#     ),
+#     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+#     "DEFAULT_PAGINATION_CLASS": "core.pagination.StandardResultsSetPagination",
+#     "PAGE_SIZE": 20,
+
+#     "DEFAULT_FILTER_BACKENDS": (
+#         "django_filters.rest_framework.DjangoFilterBackend",
+#         "rest_framework.filters.SearchFilter",
+#         "rest_framework.filters.OrderingFilter",
+#     ),
+# }
+
+
+
+
+# # =========================================================
+# # SWAGGER / OPENAPI
+# # =========================================================
+
+# SPECTACULAR_SETTINGS = {
+#     "TITLE": "OMS Margin API",
+#     "DESCRIPTION": "Order & Margin Management System",
+#     "VERSION": "1.0.0",
+# }
+
+# # =========================================================
+# # CORS CONFIG (React Support)
+# # =========================================================
+
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:3000",
+#     "http://127.0.0.1:3000",
+# ]
+
+# CORS_ALLOW_CREDENTIALS = True
+
+# CORS_ALLOW_HEADERS = [
+#     "authorization",
+#     "content-type",
+#     "x-csrftoken",
+# ]
+
+# # =========================================================
+# # CSRF CONFIG
+# # =========================================================
+
+# CSRF_TRUSTED_ORIGINS = [
+#     "http://localhost:3000",
+#     "http://127.0.0.1:3000",
+# ]
+
+# SESSION_COOKIE_SAMESITE = "Lax"
+# CSRF_COOKIE_SAMESITE = "Lax"
+
+# # IMPORTANT FOR LOCAL HTTP DEV
+# SESSION_COOKIE_SECURE = False
+# CSRF_COOKIE_SECURE = False
+
+# # =========================================================
+# # PASSWORD VALIDATION
+# # =========================================================
+
+# AUTH_PASSWORD_VALIDATORS = [
+#     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+#     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+#     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+#     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+# ]
+
+# # =========================================================
+# # INTERNATIONALIZATION
+# # =========================================================
+
+# LANGUAGE_CODE = "en-us"
+# TIME_ZONE = "UTC"
+# USE_I18N = True
+# USE_TZ = True
+
+# # =========================================================
+# # STATIC FILES
+# # =========================================================
+
+# STATIC_URL = "/static/"
+# STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+
+
 """
 Django settings for oms_margin_demo project.
-
-Generated by 'django-admin startproject' using Django 5.0.1.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/5.0/topics/settings/
-
-For the full list of settings and their values, see
-https://docs.djangoproject.com/en/5.0/ref/settings/
+OMS Margin Loan System - JWT Production Configuration
 """
+
 import os
 from pathlib import Path
+from datetime import timedelta
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# =========================================================
+# SECURITY
+# =========================================================
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
+SECRET_KEY = os.environ.get(
+    "DJANGO_SECRET_KEY",
+    "django-insecure-change-this"
+)
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-ok7eihn2z5kq)k4b@#+1*7y2z39p9+sqt^p)@&2k_ttl#d__!='
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-
-# Backoffice API credentials (loaded from environment variables)
-BACKOFFICE_BASE_URL = os.environ.get("BACKOFFICE_BASE_URL")
-BACKOFFICE_USERNAME = os.environ.get("BACKOFFICE_USERNAME")
-BACKOFFICE_PASSWORD = os.environ.get("BACKOFFICE_PASSWORD")
-
-
+DEBUG = os.environ.get("DJANGO_DEBUG", "True") == "True"
 
 ALLOWED_HOSTS = [
     "localhost",
@@ -39,63 +247,68 @@ ALLOWED_HOSTS = [
     "192.168.1.214",
 ]
 
+# =========================================================
+# BACKOFFICE API
+# =========================================================
 
-# Application definition
+BACKOFFICE_BASE_URL = os.environ.get("BACKOFFICE_BASE_URL")
+BACKOFFICE_USERNAME = os.environ.get("BACKOFFICE_USERNAME")
+BACKOFFICE_PASSWORD = os.environ.get("BACKOFFICE_PASSWORD")
+
+# =========================================================
+# APPLICATIONS
+# =========================================================
 
 INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
+    # Django Core
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
 
-    'core',
-    "backoffice",   # ← ✅ ADD THIS COMMA
-    "risk.apps.RiskConfig",
-
+    # Third-party
+    "corsheaders",
     "rest_framework",
+    "rest_framework_simplejwt",
     "drf_spectacular",
     "drf_spectacular_sidecar",
+    "django_filters",
+
+    # Local apps
+    "accounts",
+    "core",
+    "backoffice",
+    "risk.apps.RiskConfig",
 ]
 
+# =========================================================
+# MIDDLEWARE
+# =========================================================
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = 'oms_margin_demo.urls'
+ROOT_URLCONF = "oms_margin_demo.urls"
+WSGI_APPLICATION = "oms_margin_demo.wsgi.application"
 
-
-REST_FRAMEWORK = {
-    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-}
-
-
-# Optional: Spectacular settings
-SPECTACULAR_SETTINGS = {
-    "TITLE": "OMS Margin API",
-    "DESCRIPTION": "Order & Margin Management demo with Django + DRF",
-    "VERSION": "1.0.0",
-    "TAGS": [
-        {"name": "Clients", "description": "Manage client accounts"},
-        {"name": "Instruments", "description": "Tradable instruments (marginable or not)"},
-        {"name": "Portfolio", "description": "Client portfolio management"},
-        {"name": "Margin Loans", "description": "Apply and manage margin loans"},
-    ],
-}
-
+# =========================================================
+# TEMPLATES (Admin Required)
+# =========================================================
 
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -108,66 +321,125 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'oms_margin_demo.wsgi.application'
+# =========================================================
+# DATABASE (PostgreSQL - Docker Ready)
+# =========================================================
 
-
-# Database
-# https://docs.djangoproject.com/en/5.0/ref/settings/#databases
-
-# Database config for PostgreSQL
-# In your settings.py, ensure this configuration:
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('POSTGRES_DB'),
-        'USER': os.environ.get('POSTGRES_USER'),
-        'PASSWORD': os.environ.get('POSTGRES_PASSWORD'),
-        'HOST': os.environ.get('POSTGRES_HOST', 'db'),  # Default to 'db' if not set
-        'PORT': '5432',
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ.get("POSTGRES_DB", "omsdb"),
+        "USER": os.environ.get("POSTGRES_USER", "omsuser"),
+        "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "omspassword"),
+        "HOST": os.environ.get("POSTGRES_HOST", "db"),
+        "PORT": os.environ.get("POSTGRES_PORT", "5432"),
     }
 }
 
-# Kafka Settings
-KAFKA_BOOTSTRAP_SERVERS = ["kafka:9092"]  # Docker service name for kafka
+# =========================================================
+# KAFKA
+# =========================================================
 
+KAFKA_BOOTSTRAP_SERVERS = os.environ.get(
+    "KAFKA_BOOTSTRAP_SERVERS",
+    "kafka:9092"
+).split(",")
 
-# Password validation
-# https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
+# =========================================================
+# DJANGO REST FRAMEWORK
+# =========================================================
 
-AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
+    ),
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_PAGINATION_CLASS": "core.pagination.StandardResultsSetPagination",
+    "PAGE_SIZE": 20,
+    "DEFAULT_FILTER_BACKENDS": (
+        "django_filters.rest_framework.DjangoFilterBackend",
+        "rest_framework.filters.SearchFilter",
+        "rest_framework.filters.OrderingFilter",
+    ),
+}
+
+# =========================================================
+# SIMPLE JWT CONFIG (30 DAYS ACCESS TOKEN)
+# =========================================================
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=30),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=60),
+    "ROTATE_REFRESH_TOKENS": False,
+    "BLACKLIST_AFTER_ROTATION": False,
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": SECRET_KEY,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+}
+
+# =========================================================
+# SWAGGER / OPENAPI
+# =========================================================
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "OMS Margin API",
+    "DESCRIPTION": "Order & Margin Management System",
+    "VERSION": "1.0.0",
+}
+
+# =========================================================
+# CORS CONFIG (React Frontend)
+# =========================================================
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
 ]
 
+CORS_ALLOW_HEADERS = [
+    "authorization",
+    "content-type",
+]
 
-# Internationalization
-# https://docs.djangoproject.com/en/5.0/topics/i18n/
+# =========================================================
+# PASSWORD VALIDATION
+# =========================================================
 
-LANGUAGE_CODE = 'en-us'
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
 
-TIME_ZONE = 'UTC'
+# =========================================================
+# INTERNATIONALIZATION
+# =========================================================
 
+LANGUAGE_CODE = "en-us"
+TIME_ZONE = "UTC"
 USE_I18N = True
-
 USE_TZ = True
 
+# =========================================================
+# STATIC FILES
+# =========================================================
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.0/howto/static-files/
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
-STATIC_URL = 'static/'
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
+# =========================================================
+# PRODUCTION SECURITY (AUTO WHEN DEBUG=False)
+# =========================================================
 
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+if not DEBUG:
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
