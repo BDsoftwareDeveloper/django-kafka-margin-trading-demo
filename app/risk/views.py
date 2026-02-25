@@ -6,6 +6,8 @@ from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from drf_spectacular.utils import extend_schema
+from django.db.models import Count
+from core.models import Client
 
 from risk.models import ClientRiskProfile, ClientGroup, ExposureTemplate
 from risk.serializers import (
@@ -24,20 +26,69 @@ from risk.services.house_risk_service import HouseRiskService
 
 class ClientGroupViewSet(viewsets.ModelViewSet):
     """
-    Manage Client Groups (used for exposure template assignment)
+    Manage Client Groups
+    Used for exposure template assignment and client grouping
     """
 
-    queryset = ClientGroup.objects.prefetch_related("exposure_templates")
+    queryset = (
+        ClientGroup.objects
+        .prefetch_related("exposure_templates", "clients")
+        .annotate(client_count=Count("clients"))
+    )
+
     serializer_class = ClientGroupSerializer
     permission_classes = [IsAuthenticated]
 
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
 
-    filterset_fields = ["is_active"]
-    search_fields = ["name"]
-    ordering_fields = ["name", "created_at"]
+    filterset_fields = [
+        "is_active",
+    ]
+
+    search_fields = [
+        "name",
+        "description",
+    ]
+
+    ordering_fields = [
+        "name",
+        "created_at",
+        "client_count",
+    ]
+
     ordering = ["name"]
 
+    @action(detail=False, methods=["get"])
+    def available_clients(self, request):
+        """
+        Fetch clients available for grouping.
+        Supports filtering.
+        """
+
+        clients = Client.objects.all()
+
+        group_null = request.query_params.get("group__isnull")
+
+        if group_null == "true":
+            clients = clients.filter(group__isnull=True)
+
+        search = request.query_params.get("search")
+        if search:
+            clients = clients.filter(
+                client_code__icontains=search
+            )
+
+        data = [
+            {
+                "id": c.id,
+                "client_code": c.client_code,
+                "name": c.name,
+                "category": c.category,
+            }
+            for c in clients
+        ]
+
+        return Response(data)
 
 # =========================================================
 # CLIENT RISK PROFILE VIEWSET
@@ -246,7 +297,7 @@ class ExposureTemplateViewSet(viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
     # ---------------------------------------------------
-    # Assign group manually (optional helper endpoint)
+    # Assign group safely
     # ---------------------------------------------------
     @action(detail=True, methods=["post"], permission_classes=[IsAdminUser])
     def assign_group(self, request, pk=None):
@@ -260,7 +311,41 @@ class ExposureTemplateViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        group = ClientGroup.objects.get(id=group_id)
+        try:
+            group = ClientGroup.objects.get(id=group_id)
+        except ClientGroup.DoesNotExist:
+            return Response(
+                {"error": "Invalid group_id"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
         template.client_groups.add(group)
 
         return Response({"message": "Group assigned successfully"})
+
+    # ---------------------------------------------------
+    # Remove group (NEW - enterprise level)
+    # ---------------------------------------------------
+    @action(detail=True, methods=["post"], permission_classes=[IsAdminUser])
+    def remove_group(self, request, pk=None):
+
+        template = self.get_object()
+        group_id = request.data.get("group_id")
+
+        if not group_id:
+            return Response(
+                {"error": "group_id is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            group = ClientGroup.objects.get(id=group_id)
+        except ClientGroup.DoesNotExist:
+            return Response(
+                {"error": "Invalid group_id"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        template.client_groups.remove(group)
+
+        return Response({"message": "Group removed successfully"})

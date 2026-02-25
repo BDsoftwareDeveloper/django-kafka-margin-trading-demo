@@ -12,13 +12,31 @@ from risk.services.risk_engine import RiskEngine
 
 
 from risk.models import ClientGroup
+from core.models import Client
 
 
 @admin.register(ClientGroup)
 class ClientGroupAdmin(admin.ModelAdmin):
-    list_display = ("name", "is_active", "created_at")
+
+    list_display = (
+        "name",
+        "client_count",
+        "template_count",
+        "is_active",
+        "created_at",
+    )
+
     search_fields = ("name",)
     list_filter = ("is_active",)
+    readonly_fields = ("created_at",)
+
+    ordering = ("name",)
+
+    def client_count(self, obj):
+        return obj.clients.count()
+
+    def template_count(self, obj):
+        return obj.exposure_templates.count()
 @admin.register(ClientRiskProfile)
 class ClientRiskProfileAdmin(admin.ModelAdmin):
 
