@@ -3,10 +3,10 @@ from risk.models import ClientRiskProfile
 from risk.services.risk_engine import RiskEngine
 from core.models import Instrument, Client
 from risk.models import ExposureTemplate, ClientGroup
+from django.db import transaction
 
 class ExposureTemplateSerializer(serializers.ModelSerializer):
 
-    # -------- WRITE USING BUSINESS KEYS --------
     instrument_symbols = serializers.ListField(
         child=serializers.CharField(),
         write_only=True,
@@ -19,10 +19,8 @@ class ExposureTemplateSerializer(serializers.ModelSerializer):
         required=False,
     )
 
-    # -------- READ OUTPUT --------
     instruments = serializers.SerializerMethodField()
     client_groups = serializers.SerializerMethodField()
-
     instrument_count = serializers.SerializerMethodField()
     group_count = serializers.SerializerMethodField()
 
@@ -36,53 +34,48 @@ class ExposureTemplateSerializer(serializers.ModelSerializer):
             "is_active",
             "is_system",
             "created_at",
-
-            # Write fields
             "instrument_symbols",
             "client_group_names",
-
-            # Read fields
             "instruments",
             "client_groups",
-
             "instrument_count",
             "group_count",
         ]
 
-    # ---------------------------------
-    # READ SECTION
-    # ---------------------------------
+    # -----------------------------
+    # VALIDATION (IMPORTANT FIX)
+    # -----------------------------
 
-    def get_instruments(self, obj):
-        return [
-            {
-                "symbol": i.symbol,
-                "name": i.name,
-                "board": i.board,
-            }
-            for i in obj.instruments.all()
-        ]
+    def validate(self, attrs):
 
-    def get_client_groups(self, obj):
-        return [
-            {
-                "name": g.name,
-                "is_active": g.is_active,
-            }
-            for g in obj.client_groups.all()
-        ]
+        instrument_symbols = attrs.get("instrument_symbols")
+        client_group_names = attrs.get("client_group_names")
 
-    def get_instrument_count(self, obj):
-        return obj.instruments.count()
+        if instrument_symbols is not None:
+            instruments = Instrument.objects.filter(symbol__in=instrument_symbols)
 
-    def get_group_count(self, obj):
-        return obj.client_groups.count()
+            if instruments.count() != len(instrument_symbols):
+                raise serializers.ValidationError(
+                    {"instrument_symbols": "One or more instrument symbols are invalid."}
+                )
 
-    # ---------------------------------
+        if client_group_names is not None:
+            groups = ClientGroup.objects.filter(name__in=client_group_names)
+
+            if groups.count() != len(client_group_names):
+                raise serializers.ValidationError(
+                    {"client_group_names": "One or more client group names are invalid."}
+                )
+
+        return attrs
+
+    # -----------------------------
     # CREATE
-    # ---------------------------------
+    # -----------------------------
 
+    @transaction.atomic
     def create(self, validated_data):
+
         instrument_symbols = validated_data.pop("instrument_symbols", [])
         client_group_names = validated_data.pop("client_group_names", [])
 
@@ -92,11 +85,13 @@ class ExposureTemplateSerializer(serializers.ModelSerializer):
 
         return template
 
-    # ---------------------------------
-    # UPDATE (Replace Mode)
-    # ---------------------------------
+    # -----------------------------
+    # UPDATE
+    # -----------------------------
 
+    @transaction.atomic
     def update(self, instance, validated_data):
+
         instrument_symbols = validated_data.pop("instrument_symbols", None)
         client_group_names = validated_data.pop("client_group_names", None)
 
@@ -106,211 +101,43 @@ class ExposureTemplateSerializer(serializers.ModelSerializer):
 
         return instance
 
-    # ---------------------------------
-    # RELATION ASSIGNMENT HELPER
-    # ---------------------------------
+    # -----------------------------
+    # RELATION ASSIGNMENT
+    # -----------------------------
 
     def _assign_relations(self, template, instrument_symbols, client_group_names):
 
-        # Instruments
         if instrument_symbols is not None:
-            instruments = list(
-                Instrument.objects.filter(symbol__in=instrument_symbols)
-            )
-
-            if len(instruments) != len(instrument_symbols):
-                raise serializers.ValidationError(
-                    {"instrument_symbols": "One or more instrument symbols are invalid."}
-                )
-
+            instruments = Instrument.objects.filter(symbol__in=instrument_symbols)
             template.instruments.set(instruments)
 
-        # Client Groups
         if client_group_names is not None:
-            groups = list(
-                ClientGroup.objects.filter(name__in=client_group_names)
-            )
-
-            if len(groups) != len(client_group_names):
-                raise serializers.ValidationError(
-                    {"client_group_names": "One or more client group names are invalid."}
-                )
-
+            groups = ClientGroup.objects.filter(name__in=client_group_names)
             template.client_groups.set(groups)
-    
-    
+
+    # -----------------------------
+    # READ METHODS
+    # -----------------------------
+
+    def get_instruments(self, obj):
+        return [
+            {"symbol": i.symbol, "name": i.name, "board": i.board}
+            for i in obj.instruments.all()
+        ]
+
+    def get_client_groups(self, obj):
+        return [
+            {"name": g.name, "is_active": g.is_active}
+            for g in obj.client_groups.all()
+        ]
+
+    def get_instrument_count(self, obj):
+        return obj.instruments.count()
+
+    def get_group_count(self, obj):
+        return obj.client_groups.count()
 
 
-
-
-
-
-# class ExposureTemplateSerializer(serializers.ModelSerializer):
-
-#     # Write-only IDs
-#     instrument_ids = serializers.PrimaryKeyRelatedField(
-#         many=True,
-#         queryset=Instrument.objects.all(),
-#         source="instruments",
-#         write_only=True,
-#         required=False,
-#     )
-
-#     group_ids = serializers.PrimaryKeyRelatedField(
-#         many=True,
-#         queryset=ClientGroup.objects.all(),
-#         source="client_groups",
-#         write_only=True,
-#         required=False,
-#     )
-
-#     # Read-only display
-#     instruments = serializers.StringRelatedField(many=True, read_only=True)
-#     client_groups = serializers.StringRelatedField(many=True, read_only=True)
-
-#     instrument_count = serializers.SerializerMethodField()
-#     group_count = serializers.SerializerMethodField()
-
-#     class Meta:
-#         model = ExposureTemplate
-#         fields = [
-#             "id",
-#             "name",
-#             "description",
-#             "max_exposure_percent",
-#             "is_active",
-#             "is_system",
-#             "created_at",
-
-#             "instrument_ids",
-#             "group_ids",
-
-#             "instruments",
-#             "client_groups",
-
-#             "instrument_count",
-#             "group_count",
-#         ]
-
-#     def get_instrument_count(self, obj):
-#         return obj.instruments.count()
-
-#     def get_group_count(self, obj):
-#         return obj.client_groups.count()
-
-
-
-
-# class ExposureTemplateSerializer(serializers.ModelSerializer):
-
-#     # Write-only IDs
-#     instrument_ids = serializers.PrimaryKeyRelatedField(
-#         many=True,
-#         queryset=Instrument.objects.all(),
-#         write_only=True,
-#         required=False,
-#     )
-
-#     group_ids = serializers.PrimaryKeyRelatedField(
-#         many=True,
-#         queryset=ClientGroup.objects.all(),
-#         write_only=True,
-#         required=False,
-#     )
-
-#     # Read-only structured output
-#     instruments = serializers.SerializerMethodField()
-#     client_groups = serializers.SerializerMethodField()
-
-#     instrument_count = serializers.SerializerMethodField()
-#     group_count = serializers.SerializerMethodField()
-
-#     class Meta:
-#         model = ExposureTemplate
-#         fields = [
-#             "id",
-#             "name",
-#             "description",
-#             "max_exposure_percent",
-#             "is_active",
-#             "is_system",
-#             "created_at",
-
-#             "instrument_ids",
-#             "group_ids",
-
-#             "instruments",
-#             "client_groups",
-
-#             "instrument_count",
-#             "group_count",
-#         ]
-
-#     # -------------------------
-#     # READ METHODS
-#     # -------------------------
-
-#     def get_instruments(self, obj):
-#         return [
-#             {
-#                 "id": i.id,
-#                 "symbol": i.symbol,
-#                 "board": i.board,
-#             }
-#             for i in obj.instruments.all()
-#         ]
-
-#     def get_client_groups(self, obj):
-#         return [
-#             {
-#                 "id": g.id,
-#                 "name": g.name,
-#                 "is_active": g.is_active,
-#             }
-#             for g in obj.client_groups.all()
-#         ]
-
-#     def get_instrument_count(self, obj):
-#         return obj.instruments.count()
-
-#     def get_group_count(self, obj):
-#         return obj.client_groups.count()
-
-#     # -------------------------
-#     # CREATE
-#     # -------------------------
-
-#     def create(self, validated_data):
-#         instrument_ids = validated_data.pop("instrument_ids", [])
-#         group_ids = validated_data.pop("group_ids", [])
-
-#         template = ExposureTemplate.objects.create(**validated_data)
-
-#         if instrument_ids:
-#             template.instruments.set(instrument_ids)
-
-#         if group_ids:
-#             template.client_groups.set(group_ids)
-
-#         return template
-
-#     # -------------------------
-#     # UPDATE (Replace Mode)
-#     # -------------------------
-
-#     def update(self, instance, validated_data):
-#         instrument_ids = validated_data.pop("instrument_ids", None)
-#         group_ids = validated_data.pop("group_ids", None)
-
-#         instance = super().update(instance, validated_data)
-
-#         if instrument_ids is not None:
-#             instance.instruments.set(instrument_ids)
-
-#         if group_ids is not None:
-#             instance.client_groups.set(group_ids)
-
-#         return instance
 
 class ClientRiskProfileSerializer(serializers.ModelSerializer):
 
