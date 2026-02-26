@@ -14,7 +14,24 @@ from risk.services.risk_engine import RiskEngine
 from risk.models import ClientGroup
 from core.models import Client
 
-
+class ClientInline(admin.TabularInline):
+    model = Client
+    fields = (
+        "client_code",
+        "name",
+        "category",
+        "cash_balance",
+        "is_active",
+    )
+    readonly_fields = (
+        "client_code",
+        "name",
+        "category",
+        "cash_balance",
+        "is_active",
+    )
+    extra = 0
+    show_change_link = True
 @admin.register(ClientGroup)
 class ClientGroupAdmin(admin.ModelAdmin):
 
@@ -32,11 +49,14 @@ class ClientGroupAdmin(admin.ModelAdmin):
 
     ordering = ("name",)
 
+    inlines = [ClientInline]   # 👈 ADD THIS
+
     def client_count(self, obj):
         return obj.clients.count()
 
     def template_count(self, obj):
         return obj.exposure_templates.count()
+
 @admin.register(ClientRiskProfile)
 class ClientRiskProfileAdmin(admin.ModelAdmin):
 
