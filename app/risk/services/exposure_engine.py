@@ -1,30 +1,13 @@
 from decimal import Decimal
 from django.utils import timezone
-from risk.models import TemplateInstrument
+from risk.models import ExposureTemplate
 
 
 class ExposureEngine:
 
-    @staticmethod
-    def get_template_for_instrument(instrument):
-
-        now = timezone.now()
-
-        links = (
-            TemplateInstrument.objects
-            .filter(
-                instrument=instrument,
-                template__is_active=True
-            )
-            .select_related("template")
-            .order_by("priority")
-        )
-
-        for link in links:
-            if link.is_active():
-                return link.template
-
-        return None
+    # ---------------------------------------------------
+    # INITIAL / MAINTENANCE MARGIN (unchanged)
+    # ---------------------------------------------------
 
     @staticmethod
     def get_initial_margin_rate(instrument):
@@ -34,7 +17,6 @@ class ExposureEngine:
         if template:
             return template.initial_margin_rate
 
-        # fallback to instrument default
         return instrument.initial_margin_rate
 
     @staticmethod
@@ -51,5 +33,65 @@ class ExposureEngine:
     def calculate_required_margin(instrument, trade_value):
 
         margin_rate = ExposureEngine.get_initial_margin_rate(instrument)
-
         return trade_value * margin_rate
+
+    # ---------------------------------------------------
+    # EXPOSURE LIMIT (PRIORITY SAFE)
+    # ---------------------------------------------------
+
+    @staticmethod
+    def get_exposure_limit(client, instrument):
+
+        if not client.group:
+            return None
+
+        templates = (
+            ExposureTemplate.objects
+            .filter(
+                client_groups=client.group,
+                is_active=True
+            )
+            .order_by("priority")  # ✅ CRITICAL FIX
+        )
+
+        for template in templates:
+
+            # -------------------------
+            # MANUAL (Highest Authority)
+            # -------------------------
+            if template.template_type == "MANUAL":
+                if template.instruments.filter(id=instrument.id).exists():
+                    return template.max_exposure_percent
+                continue
+
+            # -------------------------
+            # SECTOR FILTER
+            # -------------------------
+            if template.sector:
+                if instrument.sector != template.sector:
+                    continue
+
+            # -------------------------
+            # PE FILTER
+            # -------------------------
+            if template.min_pe is not None:
+                if (
+                    instrument.pe_ratio is None
+                    or instrument.pe_ratio < template.min_pe
+                ):
+                    continue
+
+            if template.max_pe is not None:
+                if (
+                    instrument.pe_ratio is None
+                    or instrument.pe_ratio > template.max_pe
+                ):
+                    continue
+
+            # -------------------------
+            # MATCH FOUND
+            # -------------------------
+            return template.max_exposure_percent
+
+        # No rule matched
+        return None

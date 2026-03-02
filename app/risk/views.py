@@ -1,7 +1,9 @@
+from django.db import transaction
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
@@ -18,6 +20,11 @@ from risk.serializers import (
 )
 from risk.services.risk_engine import RiskEngine
 from risk.services.house_risk_service import HouseRiskService
+
+
+
+
+
 
 
 # =========================================================
@@ -57,6 +64,8 @@ class ClientGroupViewSet(viewsets.ModelViewSet):
     ]
 
     ordering = ["name"]
+    
+   
 
     @action(detail=False, methods=["get"])
     def available_clients(self, request):
@@ -244,20 +253,20 @@ class HouseRiskDashboardAPIView(APIView):
 
         return Response(serializer.data)
     
-    
-    
-    
-
+        
 class ExposureTemplateViewSet(viewsets.ModelViewSet):
     """
-    Exposure Template Management API
-    Used to group instruments and assign exposure limits.
+    Enterprise Exposure Template Management API
+    
+    Supports:
+    - Manual templates
+    - PE-based templates
+    - Sector templates
+    - Hybrid templates
+    - Global fallback
+    - Priority ordering
     """
-
-    queryset = ExposureTemplate.objects.prefetch_related(
-        "instruments",
-        "client_groups"
-    )
+    
 
     serializer_class = ExposureTemplateSerializer
     permission_classes = [IsAuthenticated]
@@ -267,20 +276,86 @@ class ExposureTemplateViewSet(viewsets.ModelViewSet):
     filterset_fields = [
         "is_active",
         "is_system",
+        "template_type",
+        "sector",
+        "priority",
     ]
 
-    search_fields = [
-        "name",
-        "description",
-    ]
+    search_fields = ["name", "description"]
 
     ordering_fields = [
+        "priority",
         "name",
         "created_at",
         "max_exposure_percent",
     ]
 
-    ordering = ["name"]
+    ordering = ["priority", "name"]
+
+    # ---------------------------------------------------
+    # Optimized queryset
+    # ---------------------------------------------------
+    def get_queryset(self):
+        return (
+            ExposureTemplate.objects
+            .prefetch_related("instruments", "client_groups")
+            .order_by("priority", "name")
+        )
+
+    # ---------------------------------------------------
+    # Metadata (Frontend Dynamic Form Control)
+    # ---------------------------------------------------
+    @action(detail=False, methods=["get"], url_path="metadata")
+    def metadata(self, request):
+
+        return Response({
+            "template_types": [
+                {"value": key, "label": label}
+                for key, label in ExposureTemplate.TEMPLATE_TYPE_CHOICES
+            ],
+            "field_rules": {
+                "MANUAL": {
+                    "show": ["instrument_symbols"],
+                    "required": ["instrument_symbols"]
+                },
+                "PE": {
+                    "show": ["min_pe", "max_pe"],
+                    "required": ["min_pe"]
+                },
+                "SECTOR": {
+                    "show": ["sector"],
+                    "required": ["sector"]
+                },
+                "HYBRID": {
+                    "show": ["sector", "min_pe", "max_pe"],
+                    "required": ["sector", "min_pe"]
+                },
+                "GLOBAL": {
+                    "show": [],
+                    "required": []
+                }
+            }
+        })
+
+    # ---------------------------------------------------
+    # Restrict create/update/delete to admin
+    # ---------------------------------------------------
+    def get_permissions(self):
+        if self.action in ["create", "update", "partial_update", "destroy",
+                           "assign_group", "remove_group"]:
+            return [IsAdminUser()]
+        return [IsAuthenticated()]
+
+    # ---------------------------------------------------
+    # Protect system template from modification
+    # ---------------------------------------------------
+    def perform_update(self, serializer):
+        instance = self.get_object()
+
+        if instance.is_system:
+            raise ValidationError("System template cannot be modified.")
+
+        serializer.save()
 
     # ---------------------------------------------------
     # Prevent deletion of system template
@@ -297,55 +372,91 @@ class ExposureTemplateViewSet(viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
     # ---------------------------------------------------
-    # Assign group safely
+    # Bulk Assign Groups
     # ---------------------------------------------------
-    @action(detail=True, methods=["post"], permission_classes=[IsAdminUser])
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
     def assign_group(self, request, pk=None):
 
         template = self.get_object()
-        group_id = request.data.get("group_id")
+        group_ids = request.data.get("group_ids")
 
-        if not group_id:
+        if not group_ids or not isinstance(group_ids, list):
             return Response(
-                {"error": "group_id is required"},
+                {"error": "group_ids list is required."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        try:
-            group = ClientGroup.objects.get(id=group_id)
-        except ClientGroup.DoesNotExist:
+        groups = ClientGroup.objects.filter(id__in=group_ids)
+
+        if groups.count() != len(group_ids):
             return Response(
-                {"error": "Invalid group_id"},
-                status=status.HTTP_404_NOT_FOUND
+                {"error": "One or more group_ids are invalid."},
+                status=status.HTTP_400_BAD_REQUEST
             )
 
-        template.client_groups.add(group)
+        template.client_groups.add(*groups)
 
-        return Response({"message": "Group assigned successfully"})
+        return Response({
+            "message": "Groups assigned successfully.",
+            "assigned_count": groups.count()
+        })
 
     # ---------------------------------------------------
-    # Remove group (NEW - enterprise level)
+    # Bulk Remove Groups
     # ---------------------------------------------------
-    @action(detail=True, methods=["post"], permission_classes=[IsAdminUser])
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
     def remove_group(self, request, pk=None):
 
         template = self.get_object()
-        group_id = request.data.get("group_id")
+        group_ids = request.data.get("group_ids")
 
-        if not group_id:
+        if not group_ids or not isinstance(group_ids, list):
             return Response(
-                {"error": "group_id is required"},
+                {"error": "group_ids list is required."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        try:
-            group = ClientGroup.objects.get(id=group_id)
-        except ClientGroup.DoesNotExist:
-            return Response(
-                {"error": "Invalid group_id"},
-                status=status.HTTP_404_NOT_FOUND
-            )
+        groups = ClientGroup.objects.filter(id__in=group_ids)
+        template.client_groups.remove(*groups)
 
-        template.client_groups.remove(group)
+        return Response({
+            "message": "Groups removed successfully.",
+            "removed_count": groups.count()
+        })
 
-        return Response({"message": "Group removed successfully"})
+    # ---------------------------------------------------
+    # Preview resolved instruments (Paginated)
+    # ---------------------------------------------------
+    @action(detail=True, methods=["get"])
+    def preview_instruments(self, request, pk=None):
+
+        template = self.get_object()
+        serializer = self.get_serializer(template)
+
+        instruments = serializer._resolve_instruments(template)
+
+        page = self.paginate_queryset(instruments)
+        if page is not None:
+            return self.get_paginated_response([
+                {
+                    "symbol": i.symbol,
+                    "sector": i.sector,
+                    "pe_ratio": i.pe_ratio,
+                }
+                for i in page
+            ])
+
+        return Response({
+            "template": template.name,
+            "instrument_count": instruments.count(),
+            "instruments": [
+                {
+                    "symbol": i.symbol,
+                    "sector": i.sector,
+                    "pe_ratio": i.pe_ratio,
+                }
+                for i in instruments
+            ],
+        })
