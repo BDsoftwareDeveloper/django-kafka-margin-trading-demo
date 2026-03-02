@@ -36,12 +36,55 @@ class Permission(models.Model):
 # INSTRUMENT
 # ======================================================
 
+# class Instrument(models.Model):
+
+#     BOARD_CHOICES = (
+#         ("A", "A Board"),
+#         ("B", "B Board"),
+#         ("Z", "Z Board"),
+#     )
+
+#     symbol = models.CharField(max_length=20, unique=True)
+#     name = models.CharField(max_length=100)
+#     exchange = models.CharField(max_length=20)
+
+#     board = models.CharField(max_length=1, choices=BOARD_CHOICES)
+
+#     is_marginable = models.BooleanField(default=False)
+
+#     # Initial Margin (IMR)
+#     initial_margin_rate = models.DecimalField(
+#         max_digits=5,
+#         decimal_places=2,
+#         default=Decimal("0.50"),
+#     )
+
+#     # Maintenance Margin (MMR)
+#     maintenance_margin_rate = models.DecimalField(
+#         max_digits=5,
+#         decimal_places=2,
+#         default=Decimal("0.30"),
+#     )
+
+#     is_active = models.BooleanField(default=True)
+
+#     created_at = models.DateTimeField(auto_now_add=True)
+
+#     def __str__(self):
+#         return self.symbol
 class Instrument(models.Model):
 
     BOARD_CHOICES = (
         ("A", "A Board"),
         ("B", "B Board"),
         ("Z", "Z Board"),
+    )
+    SECTOR_CHOICES = (
+        ("BANKING", "Banking"),
+        ("TECH", "Technology"),
+        ("PHARMA", "Pharmaceutical"),
+        ("CEMENT", "Cement"),
+        ("TEXTILE", "Textile"),
     )
 
     symbol = models.CharField(max_length=20, unique=True)
@@ -52,27 +95,60 @@ class Instrument(models.Model):
 
     is_marginable = models.BooleanField(default=False)
 
-    # Initial Margin (IMR)
+    # -------- Margin Controls --------
     initial_margin_rate = models.DecimalField(
         max_digits=5,
         decimal_places=2,
         default=Decimal("0.50"),
     )
 
-    # Maintenance Margin (MMR)
     maintenance_margin_rate = models.DecimalField(
         max_digits=5,
         decimal_places=2,
         default=Decimal("0.30"),
     )
 
+    # -------- Fundamental Data --------
+    eps = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text="Earnings per share"
+    )
+
+    pe_ratio = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Price to Earnings ratio"
+    )
+    sector = models.CharField(
+        max_length=20,
+        choices=SECTOR_CHOICES,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Sector classification for the instrument"
+        
+       
+        
+    )
+
     is_active = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["board"]),
+            models.Index(fields=["is_marginable"]),
+            models.Index(fields=["pe_ratio"]),
+        ]
+
     def __str__(self):
         return self.symbol
-
 
 # ======================================================
 # MARKET PRICE (MTM SOURCE)
@@ -107,61 +183,6 @@ class MarketPrice(models.Model):
 # ======================================================
 # CLIENT
 # ======================================================
-
-# class Client(models.Model):
-
-#     CATEGORY_CHOICES = (
-#         ("A", "A Type"),
-#         ("B", "B Type"),
-#         ("G", "G Type"),
-#         ("N", "N Type"),
-#     )
-
-#     # ✅ BackOffice reference code
-#     client_code = models.CharField(
-#         max_length=20,
-#         unique=True,
-#         db_index=True,
-#     )
-
-#     name = models.CharField(max_length=100)
-#     email = models.EmailField(blank=True, null=True)
-
-#     category = models.CharField(
-#         max_length=1,
-#         choices=CATEGORY_CHOICES,
-#         default="A",
-#     )
-
-#     # Liquid available cash
-#     cash_balance = models.DecimalField(
-#         max_digits=20,
-#         decimal_places=2,
-#         default=Decimal("0.00"),
-#     )
-
-#     # Cash reserved by open BUY orders
-#     blocked_cash = models.DecimalField(
-#         max_digits=20,
-#         decimal_places=2,
-#         default=Decimal("0.00"),
-#     )
-
-#     # Collateral pledged manually
-#     collateral_value = models.DecimalField(
-#         max_digits=20,
-#         decimal_places=2,
-#         default=Decimal("0.00"),
-#     )
-
-#     is_active = models.BooleanField(default=True)
-
-#     created_at = models.DateTimeField(auto_now_add=True)
-
-#     def __str__(self):
-#         return f"{self.client_code} - {self.name}"
-
-
 
 
 class Client(models.Model):

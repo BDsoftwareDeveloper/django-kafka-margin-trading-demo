@@ -12,7 +12,11 @@ from risk.services.risk_engine import RiskEngine
 
 
 from risk.models import ClientGroup
-from core.models import Client
+from core.models import Client, Instrument
+
+
+from django.db.models import Prefetch
+
 
 class ClientInline(admin.TabularInline):
     model = Client
@@ -172,11 +176,15 @@ class TemplateInstrumentInline(admin.TabularInline):
     ordering = ("priority",)
     
 
+
 @admin.register(ExposureTemplate)
 class ExposureTemplateAdmin(admin.ModelAdmin):
 
     list_display = (
         "name",
+        "template_type_display",
+        "priority",
+        "rule_summary",
         "instrument_list",
         "instrument_count_display",
         "is_active",
@@ -184,43 +192,117 @@ class ExposureTemplateAdmin(admin.ModelAdmin):
     )
 
     search_fields = ("name",)
-    list_filter = ("is_active",)
-
+    list_filter = ("is_active", "template_type")
     filter_horizontal = ("instruments",)
-    readonly_fields = ("created_at",)
 
-    # Optimize DB query
+    readonly_fields = ("created_at", "priority")
+
+    ordering = ("priority", "name")
+
+    # --------------------------------------------------
+    # Query Optimization
+    # --------------------------------------------------
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        return qs.prefetch_related("instruments").annotate(
-            _instrument_count=Count("instruments")
+        return qs.prefetch_related("instruments")
+
+    # --------------------------------------------------
+    # Template Type Display
+    # --------------------------------------------------
+    def template_type_display(self, obj):
+        return obj.get_template_type_display()
+
+    template_type_display.short_description = "Type"
+    template_type_display.admin_order_field = "template_type"
+
+    # --------------------------------------------------
+    # Rule Summary (NEW - Enterprise Clarity)
+    # --------------------------------------------------
+    def rule_summary(self, obj):
+
+        if obj.template_type == "MANUAL":
+            return "Manual instrument mapping"
+
+        if obj.template_type == "GLOBAL":
+            return "All active instruments"
+
+        parts = []
+
+        if obj.sector:
+            parts.append(f"Sector: {obj.sector}")
+
+        if obj.min_pe is not None or obj.max_pe is not None:
+            parts.append(f"PE: {obj.min_pe or '-'} → {obj.max_pe or '-'}")
+
+        return " | ".join(parts) if parts else "-"
+
+    rule_summary.short_description = "Rule"
+
+    # --------------------------------------------------
+    # Central Instrument Resolver
+    # --------------------------------------------------
+    def _resolve_instruments(self, obj):
+
+        # Manual
+        if obj.template_type == "MANUAL":
+            return obj.instruments.all()
+
+        qs = Instrument.objects.filter(is_active=True)
+
+        # GLOBAL
+        if obj.template_type == "GLOBAL":
+            return qs
+
+        # SECTOR / HYBRID
+        if obj.template_type in ["SECTOR", "HYBRID"] and obj.sector:
+            qs = qs.filter(sector=obj.sector)
+
+        # PE / HYBRID
+        if obj.template_type in ["PE", "HYBRID"]:
+            if obj.min_pe is not None:
+                qs = qs.filter(pe_ratio__gte=obj.min_pe)
+            if obj.max_pe is not None:
+                qs = qs.filter(pe_ratio__lte=obj.max_pe)
+
+        return qs
+
+    # --------------------------------------------------
+    # Show Instrument List (Optimized)
+    # --------------------------------------------------
+    def instrument_list(self, obj):
+
+        instruments = self._resolve_instruments(obj)
+
+        symbols = list(
+            instruments.values_list("symbol", flat=True)[:9]
         )
 
-    # Show instrument list (limited for readability)
-    def instrument_list(self, obj):
-        instruments = obj.instruments.all()
+        count = len(symbols)
 
-        if not instruments:
+        if count == 0:
             return "-"
 
-        symbols = [i.symbol for i in instruments[:8]]
+        # Check if more exist
+        more_exists = instruments.count() > 8
 
-        if obj._instrument_count > 8:
+        if more_exists:
             return format_html(
-                "{} <span style='color:gray;'>(+{} more)</span>",
-                ", ".join(symbols),
-                obj._instrument_count - 8,
+                "{} <span style='color:gray;'>(+ more)</span>",
+                ", ".join(symbols[:8]),
             )
 
         return ", ".join(symbols)
 
     instrument_list.short_description = "Instruments"
 
+    # --------------------------------------------------
+    # Instrument Count (Single Query)
+    # --------------------------------------------------
     def instrument_count_display(self, obj):
-        return format_html("<strong>{}</strong>", obj._instrument_count)
+        count = self._resolve_instruments(obj).count()
+        return format_html("<strong>{}</strong>", count)
 
     instrument_count_display.short_description = "Count"
-    instrument_count_display.admin_order_field = "_instrument_count"
     
 @admin.register(TemplateInstrument)
 class TemplateInstrumentAdmin(admin.ModelAdmin):
